@@ -31,6 +31,12 @@ export const marketName = (name) => name.replace(/\s+(APMC|Mandi|Market Yard|Mar
 export const placeKey = (s) => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   .replace(/\bdistrict\b/g, '').replace(/[^a-z]/g, '').replace(/(.)\1+/g, '$1');
 
+// Uttar Pradesh districts as Agmarknet spells them (placeKey) -> the gazetteer's name.
+export const DISTRICT_ALIASES = {
+  bulandshahar: 'Bulandshahr', raebareli: 'Rae Bareli', badaun: 'Budaun', lakhimpur: 'Lakhimpur Kheri',
+  khiri: 'Lakhimpur Kheri', kanpur: 'Kanpur Nagar', farukhabad: 'Farrukhabad', ambedkarnagar: 'Ambedkar Nagar',
+};
+
 /**
  * Open-Meteo geocoding (the Weather provider; no key), so transport can be estimated. A result
  * only counts when it lies in the market's own district: town names repeat across a state (UP has
@@ -49,8 +55,11 @@ export function createGeocoder({ fetchImpl = fetch } = {}) {
     return hit ? { lat: Math.round(hit.latitude * 1e5) / 1e5, lng: Math.round(hit.longitude * 1e5) / 1e5 } : null;
   }
   return async function geocode({ market, district, state }) {
-    for (const name of [district, market && marketName(market)].filter(Boolean)) {
-      const point = await lookup(name, state, district);
+    // Agmarknet district spellings the gazetteer does not use; both the query and the admin2 check
+    // use the gazetteer's name.
+    const place = DISTRICT_ALIASES[placeKey(district)] || district;
+    for (const name of [place, market && marketName(market)].filter(Boolean)) {
+      const point = await lookup(name, state, place);
       if (point) return point;
     }
     return null;
