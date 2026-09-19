@@ -32,7 +32,7 @@ test('market demo seed builds every visible state and is repeatable', async () =
     events: await count(db, 'SELECT count(*)::int n FROM app.market_events'),
   });
   const first = await snap();
-  assert.equal(first.listings, 13);
+  assert.equal(first.listings, 14);
   assert.equal(first.requests, 5);
   assert.equal(first.offers, 6);
   assert.equal(first.deals, 3);

@@ -19,6 +19,7 @@ const LISTINGS = [
   // key, seller, crop, quantity, unit, mode, price, grade, readyInDays, fulfillment
   ['meena-tomato', 'Meena S.', 'tomato', 120, 'kg', 'negotiable', 28, 'A', 1, 'pickup'],
   ['meena-onion', 'Meena S.', 'onion', 300, 'kg', 'fixed', 18, 'B', 2, 'pickup'],
+  ['meena-potato', 'Meena S.', 'potato', 150, 'kg', 'fixed', 22, 'A', 1, 'pickup'],
   ['meena-wheat', 'Meena S.', 'wheat', 20, 'quintal', 'negotiable', 2250, 'A', 1, 'negotiable'],
   ['ravi-rice', 'Ravi K.', 'rice', 5, 'quintal', 'negotiable', 2250, 'A', 1, 'pickup'],
   ['asha-wheat', 'Asha P.', 'wheat', 15, 'quintal', 'negotiable', 2300, 'A', 2, 'pickup'],
@@ -106,16 +107,15 @@ export async function seedMarketDemo(pool, { env = process.env, now = Date.now()
     await q(`INSERT INTO app.market_ratings (deal_id, rater_id, ratee_id, stars) VALUES ($1,$2,$3,5), ($1,$3,$2,5) ON CONFLICT DO NOTHING`, [deal.id, ravi.id, meena.id]);
   }
 
-  // e) the judge path: terms are mutually confirmed and a pickup code is ready,
-  // but handover has not happened yet. Ravi is the buyer, so the code is visible
-  // in his detail screen and can demonstrate the safe in-person exchange.
-  const e = await market.offerOnListing(users['Ravi K.'], ids['rahim-onion'], { requestId: 'seed-mkt-offer-pickup', ...terms(40, 42) });
-  if (['open', 'countered'].includes((await offerRow(e.id)).status)) await market.accept(users['Rahim U.'], e.id);
+  // e) the judge path: a local Ravi ↔ Meena INR trade is fully confirmed and
+  // its pickup code is ready, but handover has not happened yet. Ravi is the
+  // buyer, so the code is visible in his detail screen.
+  const e = await market.offerOnListing(users['Ravi K.'], ids['meena-potato'], { requestId: 'seed-mkt-offer-pickup-v2', ...terms(40, 22) });
+  if (['open', 'countered'].includes((await offerRow(e.id)).status)) await market.accept(users['Meena S.'], e.id);
   deal = await dealOf(e.id);
-  const rahim = users['Rahim U.'];
   const demoStep = async (when, fn) => { if (deal.status === when) { await fn(); deal = await dealOf(e.id); } };
-  await demoStep('awaiting_confirmation', async () => { await market.confirm(ravi, deal.id); await market.confirm(rahim, deal.id); });
-  await demoStep('agreed', () => market.schedule(rahim, deal.id, { pickupDate: dayOffset(1, now), pickupWindowStart: '10:00', pickupWindowEnd: '12:00', location: 'Patna collection point' }));
+  await demoStep('awaiting_confirmation', async () => { await market.confirm(ravi, deal.id); await market.confirm(meena, deal.id); });
+  await demoStep('agreed', () => market.schedule(meena, deal.id, { pickupDate: dayOffset(1, now), pickupWindowStart: '10:00', pickupWindowEnd: '12:00', location: 'Danapur market gate' }));
 
   // f) Lucknow: Pooja offers on Imran's tomatoes -> waiting for Imran to answer
   await market.offerOnListing(users['Pooja Rawat'], ids['imran-tomato'], { requestId: 'seed-mkt-offer-e', ...terms(80, 16, { note: 'For my shop in Bakshi Ka Talab' }) });

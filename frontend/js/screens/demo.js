@@ -104,7 +104,7 @@ async function openDemoTrade(ctx) {
   ctx.rerender();
   try {
     const { items } = await marketApi.deals();
-    const deal = items.find((item) => item.status === 'pickup_scheduled');
+    const deal = items.find((item) => item.status === 'pickup_scheduled' && item.counterparty.displayName === 'Meena S.');
     if (!deal) throw new Error('The demo pickup is not ready yet.');
     ctx.router.replace('MarketDeal', { id: deal.id, notice: 'Demo path: confirm the terms and pickup code.' });
   } catch (err) {
