@@ -10,7 +10,7 @@
 ## 202609191110 · 研究 + 規劃（未動程式碼）
 
 - **發現的問題**
-  - Weather.md 是一份 AI prompt，與官方規範/proposal 多處矛盾：320×240（官方只有 240×320 與 128×160）、專案名 FarmPulse、把 `current=precipitation`（雨量 mm）當降雨機率、URL markdown 語法壞掉、時數與 proposal 不同、引用 Next.js 的 cloudfone-starter（與 Vanilla 原則衝突）。
+  - `docs/Weather.md` 是一份 AI prompt，與官方規範/proposal 多處矛盾：320×240（官方只有 240×320 與 128×160）、專案名 FarmPulse、把 `current=precipitation`（雨量 mm）當降雨機率、URL markdown 語法壞掉、時數與 proposal 不同、引用 Next.js 的 cloudfone-starter（與 Vanilla 原則衝突）。
   - 官方 dev-guidelines **沒有** debounce 規則。
   - Open-Meteo 免費版僅限非商業（1 萬次/日）、需 CC-BY 標示。
   - Agmarknet（data.gov.in）有開放 API，但**越南/孟加拉沒有**同等級開放即時價格 API（FAO FPMA 只有國家級月價）。
@@ -57,9 +57,20 @@
 - **想解決什麼**：小螢幕仍能看到關鍵資訊；文件與實作、官方規範一致。
 - **做了什麼改動**
   - `responsive.css` 縮小字級/列高/間距；建議文字縮短（≤ ~30 字）。
-  - `proposal.md`：Node 安裝改 NodeSource（Ubuntu 24.04 的 apt 版本過舊）、補 RSK/LSK 官方語意、新增 `GET /weather`、風險表新增 3 項（Open-Meteo 非商業、Agmarknet 延遲、VN/BD 無開放 API）。
-  - `Weather.md`：改寫為正式規格（含修正對照表），取代原 prompt。
+  - `docs/proposal.md`：Node 安裝改 NodeSource（Ubuntu 24.04 的 apt 版本過舊）、補 RSK/LSK 官方語意、新增 `GET /weather`、風險表新增 3 項（Open-Meteo 非商業、Agmarknet 延遲、VN/BD 無開放 API）。
+  - `docs/Weather.md`：改寫為正式規格（含修正對照表），取代原 prompt。
 - **給組員的注意事項**
-  - 請以修正後的 `Weather.md` 為準，不要再用舊 prompt 生程式。
+  - 請以修正後的 `docs/Weather.md` 為準，不要再用舊 prompt 生程式。
   - 目前驗證過：Chrome 模擬 240×320 與 128×160、鍵盤完整走一遍；**尚未**在 Cloud Phone simulator / 實機測過。
   - 這批變更**尚未 commit**。
+
+## 202609191146 · push 整合 + devlog 歸位
+
+- **發現的問題**：第一次 push 被拒絕，Kris 已先推 commit，並把 `Weather.md`、`proposal.md` 搬進 `docs/`；devlog 也有了專屬 `devlog/` 資料夾。
+- **想解決什麼**：不覆蓋組員的內容，把我們的變更整合進去；統一 devlog 位置與文件路徑。
+- **做了什麼改動**
+  - `git rebase origin/main`，無衝突，我對兩份文件的修改自動套用到 `docs/` 新路徑；已 push（`7239c62`）。
+  - `devlog-Yoyo.md` 移到 `devlog/devlog-Yoyo.md`，內文的 `Weather.md` / `proposal.md` 路徑改為 `docs/` 開頭。
+- **給組員的注意事項**
+  - 文件都在 `docs/`，devlog 都放 `devlog/`。
+  - push 前先 `git pull --rebase origin main`，避免像這次被拒絕。
