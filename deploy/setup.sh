@@ -17,6 +17,11 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now agrilink
 sudo systemctl restart agrilink
 
+# Daily mandi prices (data.gov.in): a oneshot job on a 30-minute timer.
+sudo cp "$DIR/deploy/agrilink-mandi-sync.service" "$DIR/deploy/agrilink-mandi-sync.timer" /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now agrilink-mandi-sync.timer
+
 # nginx: websocket upgrade map (http context) + our location snippet
 echo 'map $http_upgrade $connection_upgrade { default upgrade; "" close; }' | sudo tee "$MAP" >/dev/null
 sudo cp "$DIR/deploy/agrilink.conf" "$SNIP"

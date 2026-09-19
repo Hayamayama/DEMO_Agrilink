@@ -1,5 +1,5 @@
 import { getJSON } from '../api.js';
-import { user } from '../state.js';
+import { user, identity } from '../state.js';
 import { money, signed, bars, h } from '../fmt.js';
 
 let qty = 5, calc = null, error = null, loading = false;
@@ -12,9 +12,11 @@ function dataDate(value) {
 
 async function load(ctx) {
   loading = true; error = null;
-  const { crop, market } = ctx.params;
+  const { crop, market, home, region } = ctx.params;
   try {
-    calc = await getJSON(`/api/prices/net-profit?crop=${crop}&region=${user.region}&from=${user.homeMarket}&to=${market.code}&qty=${qty}`);
+    const p = identity.profile;
+    const at = p?.regionLat != null && p?.regionLng != null ? `&lat=${p.regionLat}&lng=${p.regionLng}` : '';
+    calc = await getJSON(`/api/prices/net-profit?crop=${crop}&region=${region || user.region}&from=${home || user.homeMarket}&to=${market.code}&qty=${qty}${at}`);
   } catch {
     calc = null; error = 'Calculation unavailable';
   }
@@ -33,17 +35,20 @@ export default {
     const { cropLabel, market } = ctx.params;
     const head = h('', null);
     head.style.padding = 'var(--pad)';
-    head.append(h('', `${cropLabel} @ ${market.name}`), h('dim', `${bars(market.trend)} last ${market.trend.length} prices`));
+    // Daily sync builds the history one day at a time; a one-point "trend" would be noise.
+    const trend = market.trend.length > 1 ? `${bars(market.trend)} last ${market.trend.length} prices` : 'Trend appears after a few days of prices';
+    head.append(h('', `${cropLabel} @ ${market.name}`), h('dim', trend));
     wrap.appendChild(head);
     if (!calc) { wrap.appendChild(h('msg', error || 'Loading…')); return wrap; }
 
     const rows = [
       [`Sell at ${calc.to}`, `${money(calc.price_to, calc.currency)}/qt`],
-      ['Your area', `${money(calc.price_from, calc.currency)}/qt`],
+      [calc.from_distance_km > 25 ? `Nearest · ${calc.from}` : 'Your area', `${money(calc.price_from, calc.currency)}/qt`],
       // Unknown distance is shown as unknown, never as a free trip.
-      calc.transport_known
-        ? [`Transport ~${calc.distance_km}km`, `${signed(-calc.transport_per_qt, calc.currency)}/qt`]
-        : ['Transport', 'not known'],
+      !calc.transport_known ? ['Transport', 'not known']
+        // Both trips start from the member: the extra cost of the longer one.
+        : calc.from_distance_km != null ? [`Extra trip ${calc.distance_km} vs ${calc.from_distance_km}km`, `${signed(-calc.transport_per_qt, calc.currency)}/qt`]
+          : [`Transport ~${calc.distance_km}km`, `${signed(-calc.transport_per_qt, calc.currency)}/qt`],
       [calc.transport_known ? 'Net gain' : 'Gain before transport', `${signed(calc.gain_per_qt, calc.currency)}/qt`],
       [`For ${calc.qty} qt  ◄ ►`, signed(calc.gain_total, calc.currency)],
     ];
@@ -52,7 +57,7 @@ export default {
       r.append(h('', a), h(i >= 3 ? '' : 'dim', b));
       wrap.appendChild(r);
     });
-    wrap.appendChild(h('msg dim', `Price data: ${dataDate(calc.price_date)} · ${calc.source === 'agmarknet' ? 'CEDA / AGMARKNET' : calc.source || 'Database'}`));
+    wrap.appendChild(h('msg dim', `Price data: ${dataDate(calc.price_date)} · ${calc.source === 'agmarknet' ? 'Agmarknet (Govt of India)' : calc.source || 'Database'}`));
     if (!calc.same_day) wrap.appendChild(h('msg', `Prices are from different days: ${dataDate(calc.to_date)} vs ${dataDate(calc.from_date)}.`));
     wrap.appendChild(h('msg dim hide-small', `${calc.transport_known ? 'Transport is an estimate. ' : ''}Before market fees and commission.`));
     return wrap;
