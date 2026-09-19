@@ -38,7 +38,8 @@ export const identity = { profile: null, options: null };
 export const farmOps = {
   activeFarmId: null,
   activeFarm: null,
-  activeDate: new URLSearchParams(location.search).get('demoDate') || new Date().toISOString().slice(0, 10),
+  // Set when a farm is chosen, from the farm's own timezone (the cloud browser's clock is not the farmer's).
+  activeDate: new URLSearchParams(location.search).get('demoDate') || null,
   calendarView: 'agenda',
   focusedTaskId: null,
 };
