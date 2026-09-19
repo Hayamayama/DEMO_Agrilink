@@ -6,6 +6,8 @@ import { capabilities, pickPhoto, loadDemoSample, DEMO_SAMPLES, VoiceRecorder, M
 // chosen screen so the back stack stays Home → (Input) → Photo/Voice, never
 // Home → Options → Photo.
 
+const DEBUG = new URLSearchParams(location.search).has('debug');
+
 const fromInput = (ctx) => ctx.params?.from === 'input';
 
 // Photo/Voice hand the attachment to the composer. From Input we pop back to it;
@@ -220,7 +222,8 @@ async function toggleRecord(ctx) {
     mine.cancel();
     recorder = null;
     voice.state = 'idle';
-    voice.error = 'No microphone permission. Press Enter to retry.';
+    voice.error = `No microphone permission. Press Enter to retry.${DEBUG ? ' [no response]' : ''}`;
+    console.warn('voice: getUserMedia never settled (no prompt or no mic on this runtime)');
     ctx.rerender();
   }, 10000);
   try {
@@ -229,7 +232,11 @@ async function toggleRecord(ctx) {
     voice.state = 'recording';
   } catch (err) {
     if (recorder !== mine) return;
-    voice.error = err?.name === 'NotAllowedError' ? 'Microphone blocked. Type instead.' : 'Microphone not available.';
+    // With ?debug=1 the raw error name is appended so a device can be diagnosed
+    // (NotAllowedError, NotFoundError, NotReadableError, SecurityError, ...).
+    const why = DEBUG ? ` [${err?.name || 'error'}]` : '';
+    voice.error = (err?.name === 'NotAllowedError' ? 'Microphone blocked. Type instead.' : 'Microphone not available.') + why;
+    console.warn('voice: getUserMedia failed', err?.name, err?.message);
     recorder = null;
     voice.state = 'idle';
   } finally {

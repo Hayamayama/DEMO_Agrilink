@@ -332,3 +332,9 @@
 - **發現的問題**：組員在瀏覽器按 Enter 後畫面停在 `00s / 30s`。錄音本身正常（用假音訊來源驗證：計時、● REC、Stop、Send 都對），問題是瀏覽器麥克風授權對話框等待期間畫面沒有任何提示，授權若被忽略會永遠停在 00s。
 - **做了什麼改動**：等待授權時顯示「Allow the microphone when your browser asks.」與標題列「… MIC」；10 秒未回應自動放棄並提示「No microphone permission. Press Enter to retry.」；授權在取消後才回來的 stream 會立刻釋放，避免麥克風燈一直亮。本機用「永不回應的假麥克風」與「可用假麥克風」各走一遍。
 - **給組員的注意事項**：Claude 桌面 App 內建瀏覽器窗格會封鎖麥克風，語音請用真正的 Chrome 開 https 網址測；Cloud Phone / itel 實機仍未驗證。
+
+## 202609191456 · 實機語音卡在 00s/30s：新增診斷資訊
+
+- **發現的問題**：組員在實機（Cloud Phone / itel）按 Enter 後畫面停在 `00s / 30s`。代表該環境有 `getUserMedia` 與 `MediaRecorder`（Voice 選項未變灰），但呼叫後既不成功也不報錯，多半是沒有實際麥克風或授權畫面。
+- **做了什麼改動**：帶 `?debug=1` 時，錯誤訊息後面會附上原始錯誤名稱（如 `[NotFoundError]`、`[NotAllowedError]`），10 秒無回應則顯示 `[no response]`；同時寫入 console。本機用「拒絕」與「永不回應」兩種假麥克風驗證。
+- **給組員的注意事項**：部署後請在實機開 `https://203-116-30-130.sslip.io/?debug=1` 再試一次 Voice，把畫面上括號內的字記下來（這就是 spec 要的「實機實際能力」紀錄）。若是 `[no response]` 或 `NotFoundError`，該環境不支援語音，demo 請改用文字/照片。
