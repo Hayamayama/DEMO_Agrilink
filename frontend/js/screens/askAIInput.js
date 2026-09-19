@@ -28,10 +28,15 @@ function paint(ctx, { cycling = false } = {}) {
   composer.text = full;
   if (cycling) return;
 
-  // Up/Down offers completions for what is typed, or the answer's follow-ups when empty.
-  suggestions = full.trim() ? suggest(full) : followUps(ctx);
-  suggestionIndex = -1;
-  nodes.hint.textContent = suggestions.length
+  // Up/Down offers completions for what is typed, or the answer's follow-ups when
+  // empty or when the box still holds one of them (the pre-filled first follow-up).
+  const fu = followUps(ctx);
+  const fuIndex = fu.indexOf(full);
+  suggestions = full.trim() && fuIndex === -1 ? suggest(full) : fu;
+  suggestionIndex = fuIndex;
+  nodes.hint.textContent = fuIndex !== -1
+    ? `Send to ask · ▲▼ other (${fuIndex + 1}/${fu.length})`
+    : suggestions.length
     ? `▲▼ ${suggestions.length} suggestion${suggestions.length > 1 ? 's' : ''}`
     : (isCompact() ? '##=send *=del' : '# # send · * delete · 0 space');
 }
@@ -90,6 +95,14 @@ export default {
   render(ctx) {
     mt.set(composer.text);
     suggestionIndex = -1;
+    // Coming from an answer: pre-fill the first suggested follow-up so pressing 1
+    // visibly does something and one more key asks it. Only once per screen entry.
+    const fu = followUps(ctx);
+    if (ctx.params?.followUp && fu.length && !mt.value && !ctx.params.prefilled) {
+      ctx.params.prefilled = true;
+      draftBeforeSuggestion = ''; // the "your own text" slot when cycling is an empty box
+      mt.set(fu[0]);
+    }
     const wrap = el('ai-screen ai-input');
 
     const box = el('ai-textbox');

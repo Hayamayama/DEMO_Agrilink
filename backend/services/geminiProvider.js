@@ -35,6 +35,10 @@ claim definitive diagnosis. If image quality is insufficient, request one clear
 retake. For chemical or pesticide topics, prioritize label instructions, local
 regulations, protective equipment, and expert confirmation.
 
+follow_ups must be two short questions the farmer could ask you next, written in
+the farmer's own voice (for example "Which leaves yellow first?"), never
+instructions or requests addressed to the farmer.
+
 Return only JSON matching the supplied schema. Keep strings short enough for a
 small screen. Use the requested language. Do not return markdown or HTML.`;
 
