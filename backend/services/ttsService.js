@@ -16,7 +16,7 @@ export const TTS_MAX_CHARS = Number(process.env.TTS_MAX_CHARS) || 2000;
 
 const config = () => ({
   apiKey: process.env.GEMINI_API_KEY || '',
-  model: process.env.TTS_MODEL || 'gemini-2.5-flash-preview-tts',
+  model: process.env.TTS_MODEL || 'gemini-1.5-flash-8b',
   timeoutMs: Number(process.env.TTS_TIMEOUT_MS) || 15000,
 });
 

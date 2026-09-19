@@ -20,3 +20,7 @@
 - **發現的問題**：`dogbark_v1` 含 TTS，而目標 `dogbark_v2` 需保留後續的 Local Market 與 Today’s Farm 程式碼；直接以舊版覆蓋會遺失 v2 的最新功能。
 - **做了什麼改動**：確認 `dogbark_v2` 的最新 HEAD 為 `8fa5224`，且 TTS 整合 commit `a511e6f` 已在其歷史中。比對 v1/v2 的 `ttsService.js`、`routes/tts.js`、`tts.js`、`screenText.js` 雜湊一致，並確認 v2 `server.js` 已掛載 `/api/tts`、`router.js` 已支援登入後 `#` 朗讀／再次 `#` 停止。因此保留 v2 的 Local Market 與 Today’s Farm 程式碼，不以 v1 覆蓋。執行 v2 測試：TTS suite 7 項通過，整體已有 63 項通過。
 - **給組員的注意事項**：目前 `npm test` 另有 9 項既有環境／測試設定失敗：缺少 dev dependency `@electric-sql/pglite`，以及 `test/t9.test.js` 將前端 ESM 視為 CommonJS；這些與 TTS 合併無關。另保留未追蹤的 `backend/testTts.js`，未擅自刪除。部署前請在 v2 的 `backend/.env` 設定 `GEMINI_API_KEY` 與可用的 `TTS_MODEL`。
+
+# 2026-09-19 17:13 更換 TTS 語音模型 (v2)
+- **做了什麼改動**：修改 `backend/services/ttsService.js` 與 `.env.example`，將預設的 TTS 模型從 `gemini-2.5-flash-preview-tts` 變更為更快且更穩定的 `gemini-1.5-flash-8b`。
+- **功能目的**：減少生成語音的等待時間與降低因 API 限制 (Rate Limit) 導致的報錯頻率，提供更好的體驗。
