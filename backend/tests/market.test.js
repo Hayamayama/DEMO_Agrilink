@@ -238,9 +238,14 @@ test('offer rules: no self-offer, one live offer, fixed price, authorization', a
     const fixed = (await seller.post('/api/market/listings', listingBody({ pricingMode: 'fixed', askingPrice: 30 }))).body.id;
     assert.equal((await seller.post(`/api/market/listings/${fixed}/offers`, offerBody())).body.error.code, 'FORBIDDEN');
     assert.equal((await buyer.post(`/api/market/listings/${fixed}/offers`, offerBody({ unitPrice: 25 }))).body.error.field, 'unitPrice');
+    assert.equal((await buyer.get(`/api/market/listings/${fixed}`)).body.item.myOfferId, null);
     const o = await buyer.post(`/api/market/listings/${fixed}/offers`, offerBody({ unitPrice: 30 }));
     assert.equal(o.status, 201);
     assert.equal((await buyer.post(`/api/market/listings/${fixed}/offers`, offerBody({ unitPrice: 30 }))).body.error.code, 'CONFLICT');
+    // the detail tells the buyer where their live offer is (the owner never gets myOfferId)
+    assert.equal((await buyer.get(`/api/market/listings/${fixed}`)).body.item.myOfferId, o.body.id);
+    assert.equal((await stranger.get(`/api/market/listings/${fixed}`)).body.item.myOfferId, null);
+    assert.equal((await seller.get(`/api/market/listings/${fixed}`)).body.item.myOfferId, undefined);
     // outsiders cannot see or act on the offer / deal
     assert.equal((await stranger.get(`/api/market/offers/${o.body.id}`)).status, 404);
     assert.equal((await stranger.post(`/api/market/offers/${o.body.id}/accept`)).status, 404);

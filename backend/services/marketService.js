@@ -228,6 +228,12 @@ export function createMarketService({ pool, limiter, env = process.env, config =
     if (out.isMine) {
       out.openOffers = (await q(
         `SELECT count(*)::int n FROM app.market_offers WHERE ${k.offerCol} = $1 AND status IN ('open','countered')`, [id])).rows[0].n;
+    } else {
+      // At most one live offer per proposer and target (unique index), so the screen can open it
+      // instead of offering "Make offer" again and hitting CONFLICT.
+      out.myOfferId = (await q(
+        `SELECT id FROM app.market_offers WHERE ${k.offerCol} = $1 AND proposer_id = $2 AND status IN ('open','countered')`,
+        [id, user.id])).rows[0]?.id ?? null;
     }
     return { item: out };
   }

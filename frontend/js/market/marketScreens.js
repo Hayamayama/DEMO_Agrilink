@@ -220,7 +220,9 @@ function actionsFor(ctx, it, openOffers) {
     ];
   }
   return [
-    { label: 'Make offer', run: () => ctx.router.push('MarketForm', offerForm(p.kind, it, (c, r) => c.router.replace('MarketOffer', { id: r.id, notice: 'Offer sent.' }))) },
+    it.myOfferId
+      ? { label: 'View my offer', run: () => ctx.router.push('MarketOffer', { id: it.myOfferId }) }
+      : { label: 'Make offer', run: () => ctx.router.push('MarketForm', offerForm(p.kind, it, (c, r) => c.router.replace('MarketOffer', { id: r.id, notice: 'Offer sent.' }))) },
     { label: 'Report', run: () => ctx.router.push('ForumPicker', {
       title: 'Report', options: REASONS.map(([value, label]) => ({ label, value })),
       onPick(o, c) { p.pending = () => marketApi.report(p.kind, it.id, o.value).then(() => { p.notice = 'Reported. Thank you.'; ctx.rerender(); }).catch(fail); c.router.pop(); },

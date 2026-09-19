@@ -33,10 +33,12 @@ export const MarketForm = {
       if (p.errorField === f.key) r.classList.add('market-bad');
       list.appendChild(r);
     });
+    // The error sits right above the submit row, which keeps focus after a failed send, so it is
+    // on screen at 240x320 instead of below a long form.
+    if (p.error) list.appendChild(el('forum-error-text', p.error));
     const submit = el('item forum-retry', `✓ ${p.submitLabel}`);
     list.appendChild(submit);
     wrap.appendChild(list);
-    if (p.error) wrap.appendChild(el('forum-error-text', p.error));
     return wrap;
   },
   initialFocus: (ctx) => ctx.params.focusIndex ?? 0,
@@ -79,7 +81,7 @@ async function submit(ctx) {
     if (handleAuth(ctx, err)) return;
     p.error = marketError(err);
     p.errorField = err.field && visible(p).some((f) => f.key === err.field) ? err.field : null;
-    if (p.errorField) p.focusIndex = visible(p).findIndex((f) => f.key === p.errorField);
+    p.focusIndex = p.errorField ? visible(p).findIndex((f) => f.key === p.errorField) : visible(p).length;
     if (ctx.root === root || p.busy === false) ctx.rerender();
   }
 }

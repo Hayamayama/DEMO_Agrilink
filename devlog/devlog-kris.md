@@ -281,3 +281,23 @@
 
 - 既有 ledger 不需要改；新舊兩種格式都會被視為已套用。
 - VM 仍須以 migrator role 執行 `npm run db:migrate` 套用 005，執行前先備份資料庫。
+
+---
+
+## 202609191656 GMT+8 — 修正 Local Market「Send offer 沒反應」
+
+### 發現／問題
+
+- 實機（itel）對別人的 listing 按 Send offer 後看似沒反應。nginx log 顯示第一次 POST 已成功（201），之後對同一 listing 重送 7 次皆為 409 `CONFLICT`（每人對同一標的只能有一筆進行中 offer）。
+- 詳情頁不知道使用者已出價，仍顯示「Make offer」；表單的錯誤訊息畫在「Send offer」下方，且焦點跳回最後編輯的欄位，240×320 下錯誤文字在畫面外。
+
+### 做了什麼改動
+
+- 後端 `marketService.detail`：非擁有者會拿到 `myOfferId`（進行中 offer 的 id，沒有則為 null）；測試補上。
+- 前端：詳情頁有 `myOfferId` 時改顯示「View my offer」並開啟該 offer。
+- `MarketForm`：錯誤訊息改放在送出列正上方；非欄位錯誤時焦點停在送出列，確保訊息在畫面上。
+- 本機 dev server 240×320 實測：出價成功 → 返回詳情顯示 View my offer；賣方下架後送出，畫面顯示「Not found. It may have been removed.」。
+
+### 組員注意事項
+
+- 所有使用 `MarketForm` 的表單（出價、還價、刊登、排定取貨）都套用新的錯誤顯示位置。
