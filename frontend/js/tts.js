@@ -1,7 +1,12 @@
+import { t } from './i18n/index.js';
+
 let currentAudio = null;
 let currentAbort = null;
+let currentUtterance = null;
+let isSpeaking = false;
 let toastEl = null;
 let hideTimer = null;
+let session = 0;
 
 function showToast(text) {
   if (!toastEl) {
@@ -19,108 +24,134 @@ function hideToast(delay = 1200) {
   hideTimer = setTimeout(() => { if (toastEl) toastEl.hidden = true; }, delay);
 }
 
-export async function readAloud(text, language = 'en') {
-  stop(); // ensures everything is clear before starting
+function isCurrent(id) {
+  return id === session;
+}
 
+function playNativeTTS(text, language, id) {
+  if (!('speechSynthesis' in window)) {
+    showToast(t('Speech is not available on this phone.'));
+    hideToast(2500);
+    return;
+  }
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = language;
+  utterance.onstart = () => {
+    if (!isCurrent(id)) return;
+    isSpeaking = true;
+    showToast(t('Reading'));
+  };
+  utterance.onend = () => {
+    if (!isCurrent(id)) return;
+    isSpeaking = false;
+    currentUtterance = null;
+    showToast(t('Done'));
+    hideToast();
+  };
+  utterance.onerror = () => {
+    if (!isCurrent(id)) return;
+    isSpeaking = false;
+    currentUtterance = null;
+    showToast(t('Playback failed'));
+    hideToast(2500);
+  };
+  currentUtterance = utterance;
+  window.speechSynthesis.speak(utterance);
+}
+
+export async function readAloud(text, language = 'en') {
+  stop();
   if (!text || !text.trim()) return;
 
-  currentAbort = new AbortController();
-  const signal = currentAbort.signal;
-
-  showToast('Connecting to TTS Service...');
+  const id = ++session;
+  const controller = new AbortController();
+  currentAbort = controller;
+  showToast(t('Preparing audio'));
 
   try {
     const res = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text, language }),
-      signal: signal,
+      signal: controller.signal,
     });
-
-    if (signal.aborted) return;
-
-    const contentType = res.headers.get('content-type') || '';
-
-    if (contentType.includes('application/json')) {
-      const body = await res.json().catch(() => null);
-      if (signal.aborted) return;
-      const errCode = body?.error?.code || 'ERR_UNKNOWN';
-      showToast(`TTS Failed: ${errCode}`);
-      hideToast(3000);
-      currentAbort = null;
-      return;
-    }
+    if (!isCurrent(id) || controller.signal.aborted) return;
 
     if (!res.ok) {
-      showToast('TTS Failed: Network Error');
-      hideToast(2000);
+      const body = await res.json().catch(() => null);
+      if (!isCurrent(id) || controller.signal.aborted) return;
       currentAbort = null;
+      if (body?.error?.code === 'TTS_FALLBACK_NATIVE' && body.error.fallbackText) {
+        playNativeTTS(body.error.fallbackText, language, id);
+        return;
+      }
+      showToast(t(body?.error?.message || 'Audio is unavailable.'));
+      hideToast(2500);
       return;
     }
 
     const blob = await res.blob();
-    if (signal.aborted) return;
-
+    if (!isCurrent(id) || controller.signal.aborted) return;
     const url = URL.createObjectURL(blob);
-    currentAudio = new Audio(url);
-    
-    currentAudio.onplay = () => {
-      showToast('Playing Audio...');
+    const audio = new Audio(url);
+    currentAudio = audio;
+    audio.onplay = () => {
+      if (!isCurrent(id)) return;
+      isSpeaking = true;
+      showToast(t('Reading'));
     };
-
-    currentAudio.onended = () => {
+    audio.onended = () => {
       URL.revokeObjectURL(url);
-      currentAudio = null;
-      currentAbort = null; // Clean up so `#` triggers reading again
-      hideToast(0);
-    };
-
-    currentAudio.onerror = (e) => {
-      URL.revokeObjectURL(url);
+      if (!isCurrent(id)) return;
+      isSpeaking = false;
       currentAudio = null;
       currentAbort = null;
-      showToast('Audio Playback Error');
-      console.error('Audio element error:', e);
-      hideToast(3000);
+      showToast(t('Done'));
+      hideToast();
     };
-
-    currentAudio.crossOrigin = 'anonymous';
-
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      if (!isCurrent(id)) return;
+      isSpeaking = false;
+      currentAudio = null;
+      currentAbort = null;
+      showToast(t('Playback failed'));
+      hideToast(2500);
+    };
     try {
-      await currentAudio.play();
-    } catch (playErr) {
-      console.error('Play error (Auto-play blocked?):', playErr);
-      showToast('Auto-play blocked by browser');
-      hideToast(3000);
+      await audio.play();
+    } catch (err) {
+      if (!isCurrent(id) || controller.signal.aborted) return;
+      currentAudio = null;
       currentAbort = null;
+      showToast(t('Playback failed'));
+      hideToast(2500);
+      console.error('TTS playback failed:', err);
     }
-    
   } catch (err) {
-    if (err.name === 'AbortError') return; // intentional stop
-    console.error('TTS Fetch failed:', err);
-    showToast('TTS Network Request Failed');
-    hideToast(3000);
+    if (!isCurrent(id) || err.name === 'AbortError') return;
     currentAbort = null;
+    showToast(t('Audio is unavailable.'));
+    hideToast(2500);
   }
 }
 
 export function stop() {
+  session += 1;
   clearTimeout(hideTimer);
-  if (currentAbort) { 
-    currentAbort.abort(); 
-    currentAbort = null; 
-  }
-  
+  if (currentAbort) currentAbort.abort();
+  currentAbort = null;
   if (currentAudio) {
     currentAudio.pause();
     currentAudio.src = '';
-    currentAudio = null;
   }
-  
+  currentAudio = null;
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  currentUtterance = null;
+  isSpeaking = false;
   if (toastEl) toastEl.hidden = true;
 }
 
-// isPlaying now checks if a session is active (either fetching OR playing)
 export function isPlaying() {
-  return currentAbort !== null;
+  return Boolean(currentAbort || (currentAudio && !currentAudio.paused) || currentUtterance || isSpeaking);
 }
