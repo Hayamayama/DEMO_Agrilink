@@ -9,6 +9,8 @@ export const upcoming = (farmId, from, days = 7) => getApi(`/api/farms/${farmId}
 export const calendar = (farmId, from, to) => getApi(`/api/farms/${farmId}/calendar?from=${from}&to=${to}`);
 export const detail = (id) => getApi(`/api/farms/tasks/${id}/detail`);
 export const transition = (id, action, body = {}) => postApi(`/api/farms/tasks/${id}/${action}`, body);
+export const assign = (id, userId) => postApi(`/api/farms/tasks/${id}/assign`, { userId });
+export const reschedule = (id, localDate) => postApi(`/api/farms/tasks/${id}/reschedule`, { localDate });
 export const toggleChecklist = (taskId, itemId, completed) => putJSON(`/api/farms/tasks/${taskId}/checklist/${itemId}`, { completed });
 export const createTask = (farmId, body) => postApi(`/api/farms/${farmId}/tasks`, body);
 export const fields = (farmId) => getApi(`/api/farms/${farmId}/fields`);

@@ -46,6 +46,8 @@ export function createFarmOpsRouter({ pool, auth, farmPriceService, weatherGette
   for (const [action, status] of Object.entries({ accept: 'accepted', start: 'in_progress', complete: 'completed', verify: 'verified', delay: 'delayed', block: 'blocked', unblock: 'assigned', cancel: 'cancelled' })) {
     router.post(`/tasks/:taskId/${action}`, json, send((req) => service.transition(req.user, req.params.taskId, status, req.body || {})));
   }
+  router.post('/tasks/:taskId/assign', json, send((req) => service.assign(req.user, req.params.taskId, req.body || {})));
+  router.post('/tasks/:taskId/reschedule', json, send((req) => service.reschedule(req.user, req.params.taskId, req.body || {})));
   router.put('/tasks/:taskId/checklist/:itemId', json, send((req) => service.checklist(req.user, req.params.taskId, req.params.itemId, req.body?.completed)));
   router.use((_req, _res, next) => next(new AppError('NOT_FOUND', 'Not found.')));
   return { router, service, close() {} };

@@ -245,7 +245,8 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
     } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
   }
 
-  async function transition(user, id, to, body = {}) {
+  async function transition(user, id, requested, body = {}) {
+    let to = requested;
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -255,6 +256,9 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
       const manager = MANAGE.has(farm.role);
       const assigned = (await client.query(`SELECT 1 FROM app.farm_task_assignments WHERE task_id=$1 AND user_id=$2 AND status<>'removed'`, [id, user.id])).rows[0];
       if (!manager && !assigned) fail('ROLE_REQUIRED', 'This task is not assigned to you.');
+      // Unblocking hands the work back to whoever had it, or to the schedule when no one did.
+      if (task.status === 'blocked' && to === 'assigned' && !(await client.query(
+        `SELECT 1 FROM app.farm_task_assignments WHERE task_id=$1 AND status<>'removed' LIMIT 1`, [id])).rows[0]) to = 'scheduled';
       const allowed = TRANSITIONS[task.status] || [];
       if (!allowed.includes(to)) fail('INVALID_STATUS_TRANSITION', `Cannot change ${task.status} to ${to}.`);
       if (['verified','cancelled','assigned','scheduled'].includes(to) && !manager) fail('ROLE_REQUIRED', 'A manager is required for this action.');
@@ -278,11 +282,66 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
       if (to === 'completed') sets.push('completed_at=now()');
       if (to === 'verified') { sets.push('verified_at=now()'); params.push(user.id); sets.push(`verified_by=$${params.length}`); }
       if (reasonColumn) { params.push(text(body.reason, 'reason', 300)); sets.push(`${reasonColumn}=$${params.length}`); }
+      // A reason describes the current state only; the event log keeps the history.
+      if (task.status === 'blocked' && to !== 'blocked') sets.push('blocked_reason=NULL');
+      if (task.status === 'delayed' && to !== 'delayed') sets.push('delayed_reason=NULL');
       await client.query(`UPDATE app.farm_tasks SET ${sets.join(',')} WHERE id=$1`, params);
       await client.query(`INSERT INTO app.farm_task_events(task_id,actor_user_id,event_type,from_status,to_status,data) VALUES ($1,$2,'status_changed',$3,$4,$5)`, [id, user.id, task.status, to, body]);
       if (to === 'accepted') await client.query(`UPDATE app.farm_task_assignments SET status='accepted',responded_at=now() WHERE task_id=$1 AND user_id=$2`, [id, user.id]);
       if (to === 'completed') await client.query(`UPDATE app.farm_task_assignments SET status='completed',responded_at=now() WHERE task_id=$1 AND user_id=$2`, [id, user.id]);
       await client.query('COMMIT'); return { id, status: to };
+    } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+  }
+
+  const CLOSED = ['completed', 'verified', 'cancelled', 'skipped'];
+
+  // Owners and managers hand a task to one member (the primary assignee). A new assignee has to
+  // accept again, so accepted or delayed work goes back to "assigned"; blocked work stays blocked.
+  async function assign(user, id, body = {}) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const task = (await client.query('SELECT * FROM app.farm_tasks WHERE id=$1 FOR UPDATE', [id])).rows[0];
+      if (!task) fail('NOT_FOUND', 'Task not found.');
+      await membership(user.id, task.farm_id, ['owner', 'manager']);
+      if (CLOSED.includes(task.status)) fail('INVALID_STATUS_TRANSITION', `A ${task.status} task cannot be reassigned.`);
+      const to = String(body.userId || '');
+      const member = (await client.query(`SELECT role FROM app.farm_members WHERE farm_id=$1 AND user_id::text=$2 AND status='active'`, [task.farm_id, to])).rows[0];
+      if (!member) throw validation('Choose a member of this farm.', 'userId');
+      if (member.role === 'viewer') throw validation('Viewers cannot be given tasks.', 'userId');
+      await client.query(`UPDATE app.farm_task_assignments SET status='removed' WHERE task_id=$1 AND assignment_role='primary' AND user_id<>$2 AND status<>'removed'`, [id, to]);
+      await client.query(`INSERT INTO app.farm_task_assignments(task_id,user_id,assignment_role,assigned_by) VALUES ($1,$2,'primary',$3)
+        ON CONFLICT(task_id,user_id) DO UPDATE SET assignment_role='primary',status='assigned',assigned_by=EXCLUDED.assigned_by,assigned_at=now(),responded_at=NULL`, [id, to, user.id]);
+      const status = task.status === 'blocked' ? 'blocked' : task.status === 'in_progress' ? 'in_progress' : 'assigned';
+      const clear = task.status === 'delayed' ? ',delayed_reason=NULL' : '';
+      await client.query(`UPDATE app.farm_tasks SET status=$2,version=version+1,updated_at=now()${clear} WHERE id=$1`, [id, status]);
+      await client.query(`INSERT INTO app.farm_task_events(task_id,actor_user_id,event_type,from_status,to_status,data) VALUES ($1,$2,'assigned',$3,$4,$5)`,
+        [id, user.id, task.status, status, { userId: to }]);
+      await client.query('COMMIT'); return { id, status };
+    } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+  }
+
+  // Moves a task to another farm day, keeping its time of day. Delayed work is back on the plan.
+  async function reschedule(user, id, body = {}) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const task = (await client.query('SELECT *, local_date::text AS local_day FROM app.farm_tasks WHERE id=$1 FOR UPDATE', [id])).rows[0];
+      if (!task) fail('NOT_FOUND', 'Task not found.');
+      await membership(user.id, task.farm_id, ['owner', 'manager']);
+      if (CLOSED.includes(task.status)) fail('INVALID_STATUS_TRANSITION', `A ${task.status} task cannot be moved.`);
+      const day = dateOnly(body.localDate, 'localDate');
+      const shift = Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${task.local_day}T00:00:00Z`)) / 86400000);
+      let status = task.status;
+      if (status === 'delayed') {
+        status = (await client.query(`SELECT 1 FROM app.farm_task_assignments WHERE task_id=$1 AND status<>'removed' LIMIT 1`, [id])).rows[0] ? 'assigned' : 'scheduled';
+      }
+      await client.query(`UPDATE app.farm_tasks SET local_date=$2::date, start_at=start_at + make_interval(days => $3::int),
+        due_at=due_at + make_interval(days => $3::int), status=$4, delayed_reason=CASE WHEN $4='delayed' THEN delayed_reason END,
+        version=version+1, updated_at=now() WHERE id=$1`, [id, day, shift, status]);
+      await client.query(`INSERT INTO app.farm_task_events(task_id,actor_user_id,event_type,from_status,to_status,data) VALUES ($1,$2,'rescheduled',$3,$4,$5)`,
+        [id, user.id, task.status, status, { from: task.local_day, to: day }]);
+      await client.query('COMMIT'); return { id, status, localDate: day };
     } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
   }
 
@@ -318,5 +377,5 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
     const r = await pool.query(`SELECT r.*,f.name field_name,p.display_name actor_name,t.title task_title FROM app.farm_records r LEFT JOIN app.farm_fields f ON f.id=r.field_id LEFT JOIN app.user_profiles p ON p.user_id=r.actor_user_id LEFT JOIN app.farm_tasks t ON t.id=r.task_id WHERE ${where.join(' AND ')} ORDER BY r.occurred_at DESC LIMIT 100`, params);
     return { items: r.rows };
   }
-  return { farms, createFarm, membership, overview, prices, sprayAssessment, calendar, listTasks, getTask, createTask, transition, checklist, fields, members, records };
+  return { farms, createFarm, membership, overview, prices, sprayAssessment, calendar, listTasks, getTask, createTask, transition, assign, reschedule, checklist, fields, members, records };
 }

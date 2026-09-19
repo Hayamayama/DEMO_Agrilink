@@ -155,3 +155,57 @@ test('the weather row follows the chosen day: now, a forecast, or plainly nothin
   assert.equal(dayWeather(weather, '2026-10-01').basis, 'beyond');
   assert.equal(dayWeather(null, '2026-09-19'), null);
 });
+
+const taskByTitle = async (t, title) => (await t.pool.query(`SELECT id, status, local_date::text AS local_day, start_at, due_at, blocked_reason, delayed_reason
+  FROM app.farm_tasks WHERE farm_id=$1 AND title=$2`, [FARM_DEMO_ID, title])).rows[0];
+
+test('unblocking returns work to its assignee, or to the schedule, and clears the reason', async () => {
+  const t = await setup();
+  try {
+    const spray = await taskByTitle(t, 'Spray vegetable plot'); // blocked, assigned to the manager
+    await assert.rejects(() => t.ops.transition(t.worker, spray.id, 'assigned'), (e) => ['ROLE_REQUIRED'].includes(e.code));
+    assert.equal((await t.ops.transition(t.owner, spray.id, 'assigned')).status, 'assigned');
+    assert.equal((await taskByTitle(t, 'Spray vegetable plot')).blocked_reason, null);
+    const leaf = await taskByTitle(t, 'Check rice leaf spots'); // assigned to the manager
+    await t.pool.query(`UPDATE app.farm_task_assignments SET status='removed' WHERE task_id=$1`, [leaf.id]);
+    await t.pool.query(`UPDATE app.farm_tasks SET status='blocked', blocked_reason='Pump broken' WHERE id=$1`, [leaf.id]);
+    assert.equal((await t.ops.transition(t.manager, leaf.id, 'assigned')).status, 'scheduled', 'no one had it');
+  } finally { await t.close(); }
+});
+
+test('owners and managers reassign tasks; the new assignee accepts again', async () => {
+  const t = await setup();
+  try {
+    const water = await taskByTitle(t, 'Irrigate north section'); // in progress
+    const leaf = await taskByTitle(t, 'Check rice leaf spots');   // assigned to the manager
+    await t.ops.transition(t.manager, leaf.id, 'accepted');
+    await assert.rejects(() => t.ops.assign(t.worker, leaf.id, { userId: t.worker.id }), (e) => e.code === 'ROLE_REQUIRED');
+    await assert.rejects(() => t.ops.assign(t.owner, leaf.id, { userId: t.viewer.id }), (e) => e.field === 'userId');
+    await assert.rejects(() => t.ops.assign(t.owner, leaf.id, { userId: 'nope' }), (e) => e.field === 'userId');
+    assert.equal((await t.ops.assign(t.owner, leaf.id, { userId: t.worker.id })).status, 'assigned', 'accepted work must be accepted again');
+    const people = (await t.pool.query(`SELECT user_id, status FROM app.farm_task_assignments WHERE task_id=$1 AND status<>'removed'`, [leaf.id])).rows;
+    assert.deepEqual(people.map((p) => p.user_id), [t.worker.id], 'the previous assignee is removed');
+    assert.equal((await t.ops.getTask(t.worker, leaf.id)).item.assignments[0].userId, t.worker.id);
+    assert.equal((await t.ops.assign(t.owner, water.id, { userId: t.worker.id })).status, 'in_progress');
+    const done = await taskByTitle(t, 'Record tomato soil moisture');
+    await assert.rejects(() => t.ops.assign(t.owner, done.id, { userId: t.worker.id }), (e) => e.code === 'INVALID_STATUS_TRANSITION');
+  } finally { await t.close(); }
+});
+
+test('moving a task keeps its time of day and puts delayed work back on the plan', async () => {
+  const t = await setup();
+  try {
+    const pump = await taskByTitle(t, 'Inspect pump'); // 2026-09-18, assigned to the owner
+    await t.ops.transition(t.owner, pump.id, 'delayed', { reason: 'Waiting for parts' });
+    await assert.rejects(() => t.ops.reschedule(t.worker, pump.id, { localDate: '2026-09-21' }), (e) => e.code === 'ROLE_REQUIRED');
+    await assert.rejects(() => t.ops.reschedule(t.owner, pump.id, { localDate: '21-09-2026' }), (e) => e.field === 'localDate');
+    assert.deepEqual(await t.ops.reschedule(t.owner, pump.id, { localDate: '2026-09-21' }), { id: pump.id, status: 'assigned', localDate: '2026-09-21' });
+    const moved = await taskByTitle(t, 'Inspect pump');
+    assert.equal(moved.local_day, '2026-09-21');
+    assert.equal(moved.delayed_reason, null);
+    assert.equal(new Date(moved.start_at) - new Date(pump.start_at), 3 * 86400000);
+    assert.equal(new Date(moved.due_at) - new Date(pump.due_at), 3 * 86400000);
+    const overview = await t.ops.overview(t.owner, FARM_DEMO_ID, '2026-09-19');
+    assert.ok(!overview.sections.overdue.some((x) => x.id === pump.id), 'no longer overdue');
+  } finally { await t.close(); }
+});

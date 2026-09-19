@@ -124,22 +124,93 @@ function spraySection(root,spray){
   root.append(el('ops-description',spray.disclaimer));
 }
 let detailActionBusy=false;
+const CLOSED=['completed','verified','cancelled','skipped'];
+const isManager=(role)=>['owner','manager'].includes(role);
+const isMine=(task)=>task.assignments?.some((a)=>a.userId===identity.profile?.id);
+const weekday=(iso)=>new Intl.DateTimeFormat('en',{weekday:'short',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
 const actionFor=(task,role)=> {
-  if(task.status==='completed'&&['owner','manager'].includes(role))return ['verify','Verify'];
-  const mine=task.assignments?.some((a)=>a.userId===identity.profile?.id);
-  if(!mine)return null;
+  if(task.status==='completed'&&isManager(role))return ['verify','Verify'];
+  if(!isMine(task))return null;
   return task.status==='assigned'?['accept','Accept']:task.status==='accepted'?['start','Start']:task.status==='in_progress'?['complete','Complete']:null;
 };
+// Everything else this member may do with the task. The server enforces the same rules.
+function optionsFor(task,role){
+  const m=isManager(role), out=[];
+  if(task.status==='blocked'&&m) out.push({label:'Unblock: back to work',value:'unblock'});
+  if(!CLOSED.includes(task.status)&&m) out.push({label:'Assign to…',value:'assign'},{label:'Move to another day…',value:'move'});
+  if(['assigned','accepted','in_progress'].includes(task.status)&&(m||isMine(task))) out.push({label:'Delay…',value:'delay'});
+  if(['scheduled','assigned','blocked','delayed'].includes(task.status)&&m) out.push({label:'Cancel task…',value:'cancel'});
+  return out;
+}
+const REASONS={
+  block:['Weather not suitable','Equipment broken','Inputs not available','Field not accessible','Need help from manager'],
+  delay:['Weather','Waiting for inputs','Equipment problem','Workers not available','Other work first'],
+  cancel:['No longer needed','Done another way','Duplicate task','Crop changed'],
+};
+const REASON_TITLE={block:'What is the problem?',delay:'Why delay?',cancel:'Why cancel?'};
+const REASON_LABEL={blocked:'Blocked',delayed:'Delayed',cancelled:'Cancelled'};
+
+// Runs a change from a picker, then goes back to the task, which reloads.
+async function act(ctx,fn){ if(detailActionBusy)return; detailActionBusy=true; try{ await fn(); ctx.router.pop(); }catch(e){ flash(e.message); }finally{ detailActionBusy=false; } }
+function reasonPicker(ctx,id,action,replace){
+  const params={title:REASON_TITLE[action],options:REASONS[action].map((r)=>({label:r,value:r})),onPick:(o,c)=>act(c,()=>api.transition(id,action,{reason:o.value}))};
+  if(replace) ctx.router.replace('ForumPicker',params); else ctx.router.push('ForumPicker',params);
+}
+async function runOption(ctx,task,value){
+  const id=task.id;
+  if(value==='unblock') return act(ctx,()=>api.transition(id,'unblock'));
+  if(value==='delay'||value==='cancel') return reasonPicker(ctx,id,value,true);
+  if(value==='assign'){
+    let people; try{ people=(await api.members(farmOps.activeFarmId)).items.filter((m)=>m.role!=='viewer'); }catch(e){ return flash(e.message); }
+    return ctx.router.replace('ForumPicker',{title:'Assign to',selected:task.assignments?.[0]?.userId,
+      options:people.map((m)=>({label:`${m.display_name} · ${m.role} · ${m.open_tasks} open`,value:m.user_id})),onPick:(o,c)=>act(c,()=>api.assign(id,o.value))});
+  }
+  if(value==='move'){
+    const today=farmToday(farmOps.activeFarm?.timezone);
+    const days=Array.from({length:14},(_,i)=>dateShift(today,i)).filter((d)=>d!==task.localDate);
+    return ctx.router.replace('ForumPicker',{title:'Move to',options:days.map((d)=>({label:`${d===today?'Today':weekday(d)} · ${niceDate(d)}`,value:d})),
+      onPick:(o,c)=>act(c,()=>api.reschedule(id,o.value))});
+  }
+}
+// What happened, not just the status afterwards: a reassignment or a move keeps the status.
+const historyLabel=(e)=>e.event_type==='assigned'?'reassigned':e.event_type==='rescheduled'?`moved to ${niceDate(e.data?.to)}`
+  :e.event_type==='created'?'created':String(e.to_status||e.event_type).replace('_',' ');
+function actionRows(root,t){
+  const role=farmOps.activeFarm?.role, a=actionFor(t,role);
+  if(a){const r=el('item ops-action',`${a[1]} task`);r.dataset.action=a[0];root.append(r);}
+  if(t.status==='in_progress'&&isMine(t)){const r=el('item ops-action','Report problem…');r.dataset.report='1';root.append(r);}
+  if(optionsFor(t,role).length){const r=el('item ops-action','Options…');r.dataset.options='1';root.append(r);}
+}
 export const FarmTaskDetail = asyncScreen({ name:'FarmTaskDetail',title:'Task Detail',
   load:(ctx)=>api.detail(ctx.params.id),
-  renderData(data){const t=data.item,root=el('ops-page');root.append(el(`ops-priority priority-${t.priority}`,`${t.priority.toUpperCase()} · ${t.type.toUpperCase()}`),el('ops-detail-title',t.title),el('ops-task-meta',`${t.fieldName||'No field'} · ${niceDate(t.localDate)}`),el('ops-task-meta',STATUS[t.status]||t.status));if(t.description)root.append(el('ops-description',t.description));const spray=data.sprayAssessment;if(spray)spraySection(root,spray);if(data.checklist.length){root.append(el('ops-section-title',`CHECKLIST · ${data.checklist.filter(x=>x.completed_at).length}/${data.checklist.length}`));for(const c of data.checklist){const r=el('item ops-checklist');r.dataset.item=c.id;r.dataset.done=c.completed_at?'1':'';r.textContent=`${c.completed_at?'✓':'□'} ${c.label}`;root.append(r);}}const a=actionFor(t,farmOps.activeFarm?.role);if(a){const r=el('item ops-action',`${a[1]} task`);r.dataset.action=a[0];root.append(r);}if(t.status==='in_progress'&&t.assignments?.some((x)=>x.userId===identity.profile?.id)){const r=el('item ops-action','Report problem');r.dataset.action='block';root.append(r);}root.append(el('ops-section-title','HISTORY'));data.events.slice(-4).reverse().forEach(e=>root.append(el('ops-history',`${new Date(e.created_at).toLocaleString()} · ${e.to_status||e.event_type}`)));return root;},
-  async onEnter(node,ctx){if(detailActionBusy)return;if(node?.dataset.item){detailActionBusy=true;try{await api.toggleChecklist(ctx.params.id,node.dataset.item,node.dataset.done!=='1');ctx.router.replace('FarmTaskDetail',{id:ctx.params.id});}catch(e){flash(e.message);}finally{detailActionBusy=false;}return;}const action=node?.dataset.action;if(action){detailActionBusy=true;try{await api.transition(ctx.params.id,action,action==='complete'?{resultCode:'done',result:{source:'keypad'},note:'Completed from Today’s Farm'}:action==='block'?{reason:'Problem reported by worker'}:{});ctx.router.replace('FarmTaskDetail',{id:ctx.params.id});}catch(e){flash(e.message);}finally{detailActionBusy=false;}}},
+  renderData(data){const t=data.item,root=el('ops-page');root.append(el(`ops-priority priority-${t.priority}`,`${t.priority.toUpperCase()} · ${t.type.toUpperCase()}`),el('ops-detail-title',t.title),el('ops-task-meta',`${t.fieldName||'No field'} · ${niceDate(t.localDate)}`),el('ops-task-meta',`${STATUS[t.status]||t.status}${t.assignments?.[0]?` · ${t.assignments[0].name}`:''}`));
+    const why={blocked:t.blocked_reason,delayed:t.delayed_reason,cancelled:t.cancelled_reason}[t.status];if(why)root.append(el('ops-reason',`${REASON_LABEL[t.status]}: ${why}`));
+    if(t.description)root.append(el('ops-description',t.description));const spray=data.sprayAssessment;if(spray)spraySection(root,spray);if(data.checklist.length){root.append(el('ops-section-title',`CHECKLIST · ${data.checklist.filter(x=>x.completed_at).length}/${data.checklist.length}`));for(const c of data.checklist){const r=el('item ops-checklist');r.dataset.item=c.id;r.dataset.done=c.completed_at?'1':'';r.textContent=`${c.completed_at?'✓':'□'} ${c.label}`;root.append(r);}}
+    actionRows(root,t);root.append(el('ops-section-title','HISTORY'));data.events.slice(-4).reverse().forEach(e=>root.append(el('ops-history',`${new Date(e.created_at).toLocaleString()} · ${historyLabel(e)}`)));return root;},
+  async onEnter(node,ctx,_i,data){if(detailActionBusy||!node)return;const id=ctx.params.id;
+    if(node.dataset.options)return ctx.router.push('ForumPicker',{title:'Task options',options:optionsFor(data.item,farmOps.activeFarm?.role),onPick:(o,c)=>runOption(c,data.item,o.value)});
+    if(node.dataset.report)return reasonPicker(ctx,id,'block',false);
+    const run=node.dataset.item?()=>api.toggleChecklist(id,node.dataset.item,node.dataset.done!=='1'):node.dataset.action?()=>api.transition(id,node.dataset.action,node.dataset.action==='complete'?{resultCode:'done',result:{source:'keypad'},note:'Completed from Today’s Farm'}:{}):null;
+    if(!run)return;detailActionBusy=true;try{await run();ctx.router.replace('FarmTaskDetail',{id});}catch(e){flash(e.message);}finally{detailActionBusy=false;}},
 });
 
+// Two steps on one screen: the kind of work, then the field (when the farm has fields).
 const PRESETS=[['Field inspection','inspection','normal'],['Irrigation check','irrigation','high'],['Pump maintenance','machinery','high'],['Farm record','record','normal']];
-export const FarmTaskCreate = { name:'FarmTaskCreate',title:'Quick Add',numericSelect:true,softRight:{label:'Back',handler:(ctx)=>ctx.router.pop()},
-  render(){const root=el('list');PRESETS.forEach((p,i)=>{const r=el('item');r.textContent=`${i+1}  ${p[0]}`;root.append(r);});root.append(message('Creates for the selected farm date, assigned to you.'));return root;},
-  async onEnter(_node,ctx,i){const p=PRESETS[i];if(!p)return;try{const out=await api.createTask(farmOps.activeFarmId,{requestId:requestId(),title:p[0],type:p[1],priority:p[2],localDate:farmOps.activeDate,isAllDay:true,assignees:identity.profile?.id?[{userId:identity.profile.id}]:[]});ctx.router.replace('FarmTaskDetail',{id:out.id});}catch(e){flash(e.message);}},
+let creatingTask=false;
+async function createFromPreset(ctx,i,fieldId){
+  if(creatingTask)return; creatingTask=true; const p=PRESETS[i];
+  try{const out=await api.createTask(farmOps.activeFarmId,{requestId:requestId(),title:p[0],type:p[1],priority:p[2],localDate:farmOps.activeDate,isAllDay:true,fieldId,assignees:identity.profile?.id?[{userId:identity.profile.id}]:[]});ctx.router.replace('FarmTaskDetail',{id:out.id});}
+  catch(e){flash(e.message);}finally{creatingTask=false;}
+}
+export const FarmTaskCreate = { name:'FarmTaskCreate',title:(ctx)=>ctx.params?.preset!=null?'Which field?':'Quick Add',numericSelect:true,softRight:{label:'Back',handler:(ctx)=>ctx.router.pop()},
+  render(ctx){const p=ctx.params||{},root=el('list');
+    if(p.preset==null){PRESETS.forEach((x,i)=>{const r=el('item');r.textContent=`${i+1}  ${x[0]}`;root.append(r);});root.append(message('Creates for the selected farm date, assigned to you.'));return root;}
+    [...p.fields.map((f)=>f.name),'No field'].forEach((n,i)=>{const r=el('item');r.textContent=`${i+1}  ${n}`;root.append(r);});
+    root.append(message(`${PRESETS[p.preset][0]} · ${niceDate(farmOps.activeDate)}`));return root;},
+  async onEnter(_node,ctx,i){const p=ctx.params||{};
+    if(p.preset==null){if(!PRESETS[i])return;let fields=[];try{fields=(await api.fields(farmOps.activeFarmId)).items;}catch{/* create without a field */}
+      return fields.length?ctx.router.replace('FarmTaskCreate',{preset:i,fields}):createFromPreset(ctx,i,null);}
+    if(i>p.fields.length)return;return createFromPreset(ctx,p.preset,p.fields[i]?.id||null);},
 };
 
 export const FarmRecords = asyncScreen({name:'FarmRecords',title:'Farm Records',load:()=>api.records(farmOps.activeFarmId),renderData(data){const root=el('list');data.items.forEach(r=>{const x=el('item ops-record-row');x.append(el('',r.task_title||r.record_type),el('ops-task-meta',`${String(r.local_date).slice(0,10)} · ${r.actor_name||'System'}`));root.append(x);});return data.items.length?root:message('No farm records yet. Completing work creates records.');}});
