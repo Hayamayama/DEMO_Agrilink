@@ -34,8 +34,11 @@ export function tooMany(what, retryMs) {
   return new AppError('RATE_LIMITED', `Too many ${what}. Try again in ${hint}.`, { retryable: true, retryAfter: secs });
 }
 
-export function limitByIp(limiter, name, limit, windowMs, what) {
+// Cloud Phone renders pages in CloudMosa's cloud, so every handset reaches us from the same few
+// egress IPs; a per-IP limit there is a limit shared by all users. Signed-in requests are keyed by
+// account instead, and only anonymous ones fall back to the IP. Run it after req.user is resolved.
+export function limitByUser(limiter, name, limit, windowMs, what) {
   return (req, _res, next) => {
-    try { limiter.hit(`${name}:${req.ip}`, limit, windowMs, what); next(); } catch (e) { next(e); }
+    try { limiter.hit(`${name}:${req.user?.id ? `u:${req.user.id}` : `ip:${req.ip}`}`, limit, windowMs, what); next(); } catch (e) { next(e); }
   };
 }
