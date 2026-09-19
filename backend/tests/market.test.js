@@ -392,3 +392,15 @@ test('sync replays my offer/deal events and regional posts, never someone else\'
     assert.deepEqual((await since(buyer, 0)).events.map((e) => e.kind), ['deal.awaiting_confirmation']);
   } finally { await t.close(); }
 });
+
+test('offers on seeded demo posts say so, so a buyer does not wait for a reply', async () => {
+  const t = await start();
+  try {
+    const s = await offered(t);
+    assert.equal((await s.buyer.get(`/api/market/offers/${s.offerId}`)).body.item.onDemoPost, false);
+    await t.db.query('UPDATE app.market_listings SET is_demo = true WHERE id = $1', [s.listingId]);
+    assert.equal((await s.buyer.get(`/api/market/offers/${s.offerId}`)).body.item.onDemoPost, true);
+    assert.equal((await s.buyer.get('/api/market/offers?role=outgoing')).body.items[0].onDemoPost, true);
+    assert.equal((await s.buyer.get(`/api/market/listings/${s.listingId}`)).body.item.isDemo, true);
+  } finally { await t.close(); }
+});

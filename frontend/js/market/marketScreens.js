@@ -194,6 +194,7 @@ export const MarketDetail = {
     info.appendChild(line(it.type === 'selling' ? 'Seller' : 'Buyer', it.owner.displayName));
     info.appendChild(line('Expires', timeLeft(it.expiresAt)));
     info.appendChild(el('forum-hint', 'Asking prices are not verified. Payment happens outside AgriLink.'));
+    if (it.isDemo && !it.isMine) info.appendChild(el('forum-error-text', 'Demo post: nobody answers offers here. Use a second phone to try a real trade.'));
     wrap.appendChild(info);
     const list = el('list');
     p.actions.forEach((a, i) => list.appendChild(row(i + 1, a.label)));
