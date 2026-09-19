@@ -1,7 +1,7 @@
 import { el } from '../dom.js';
 import { MultiTap } from '../t9.js';
 import { getJSON, postJSON, ApiError } from '../api.js';
-import { identity, user } from '../state.js';
+import { identity } from '../state.js';
 
 const draft = { mode: 'signup', phone: '', pin: '', pinConfirm: '', name: new MultiTap({ max: 60 }), village: new MultiTap({ max: 80 }), regionId: null, language: 'en', cropIds: [], cropUserId: null };
 const digits = (value, max) => String(value).replace(/\D/g, '').slice(0, max);
@@ -20,7 +20,6 @@ async function options() {
 }
 function enterMain(ctx, profile) {
   identity.profile = profile;
-  user.region = profile.regionId;
   ctx.router.replace('MainMenu');
 }
 function editKey(action, tap, ctx, next) {
@@ -147,4 +146,4 @@ export const CropSettings = {
   render() { const root = el('list'); const crops = identity.options?.crops || []; if (!crops.length) { root.append(note('Loading crops…')); return root; } crops.forEach((crop, i) => root.append(el('item', `${i + 1}  ${draft.cropIds.includes(crop.id) ? '✓ ' : ''}${crop.name}`))); return root; },
   onEnter(_el, ctx, i) { const crop = identity.options?.crops?.[i]; if (!crop) return; draft.cropIds = draft.cropIds.includes(crop.id) ? draft.cropIds.filter((id) => id !== crop.id) : [...draft.cropIds, crop.id]; ctx.rerender(); },
 };
-async function logout(ctx) { try { await postJSON('/api/auth/logout', {}); identity.profile = null; ctx.router.reset(); ctx.router.replace('AuthWelcome'); } catch (err) { ctx.router.push('AuthResult', { message: errorText(err), retry: 'Settings' }); } }
+async function logout(ctx) { try { await postJSON('/api/auth/logout', {}); identity.profile = null; ctx.router.resetTo('AuthWelcome'); } catch (err) { ctx.router.push('AuthResult', { message: errorText(err), retry: 'Settings' }); } }
