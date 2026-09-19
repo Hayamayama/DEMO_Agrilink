@@ -1,10 +1,11 @@
 import translate from 'google-translate-api-x';
 
 export class TtsError extends Error {
-  constructor(code, message, { retryable = false } = {}) {
+  constructor(code, message, { retryable = false, fallbackText = null } = {}) {
     super(message);
     this.code = code;
     this.retryable = retryable;
+    this.fallbackText = fallbackText;
   }
 }
 
@@ -18,8 +19,7 @@ const config = () => ({
 
 export const isConfigured = () => true;
 
-<<<<<<< HEAD
-// Helper to chunk text by word/punctuation so it stays under 200 chars for Google Translate TTS
+// Helper to chunk text for Google Translate TTS
 function chunkText(text, maxLen = 190) {
   const chunks = [];
   let current = '';
@@ -36,7 +36,7 @@ function chunkText(text, maxLen = 190) {
   return chunks.filter(c => c);
 }
 
-// Fallback method using Gemini Official API if the scraper fails
+// Fallback method using Gemini Official API
 async function synthesizeWithGemini(text, language, signal) {
   const cfg = config();
   if (!cfg.apiKey) throw new TtsError('TTS_UNAVAILABLE', 'TTS fallback is not configured.');
@@ -87,29 +87,24 @@ async function synthesizeWithGemini(text, language, signal) {
 }
 
 export async function synthesize(text, language = 'en', { signal } = {}) {
-=======
-/**
- * Translates text using google-translate-api-x and returns the text.
- * The frontend will then use the browser's native window.speechSynthesis to play it.
- */
-export async function synthesize(text, language = 'en', { signal, provider = translate } = {}) {
->>>>>>> b49382c2ffcbd6aff43ec44a8d68d905faf0ed53
   const trimmed = String(text || '').trim().slice(0, TTS_MAX_CHARS);
   if (!trimmed) throw new TtsError('TTS_EMPTY', 'No text to read aloud.');
 
+  // Step 1: Always translate the text first. We need this both for Google TTS and the Native TTS fallback.
+  let textToSpeak = trimmed;
+  if (language !== 'en') {
+    try {
+      const translation = await translate(trimmed, { to: language, requestOptions: { signal } });
+      textToSpeak = translation.text;
+    } catch (translateErr) {
+      console.error('Translation failed:', translateErr.message);
+      // If translation completely fails, we can't even use native TTS properly.
+      throw new TtsError('TTS_UNAVAILABLE', 'Translation failed.', { retryable: true });
+    }
+  }
+
   try {
     // PRIMARY METHOD: Free Google Translate MP3 Generation
-    let textToSpeak = trimmed;
-<<<<<<< HEAD
-=======
-
->>>>>>> b49382c2ffcbd6aff43ec44a8d68d905faf0ed53
-    if (language !== 'en') {
-      const translation = await provider(trimmed, { to: language, requestOptions: { signal } });
-      textToSpeak = translation.text;
-    }
-
-<<<<<<< HEAD
     const chunks = chunkText(textToSpeak);
     if (chunks.length === 0) throw new TtsError('TTS_EMPTY', 'No text to read aloud.');
 
@@ -123,34 +118,26 @@ export async function synthesize(text, language = 'en', { signal, provider = tra
 
     return { audio: Buffer.concat(buffers), mimeType: 'audio/mp3' };
     
-=======
-    return {
-      text: textToSpeak,
-      mimeType: 'text/plain',
-    };
->>>>>>> b49382c2ffcbd6aff43ec44a8d68d905faf0ed53
   } catch (err) {
     if (err.name === 'AbortError' || signal?.aborted) throw new TtsError('CANCELLED', 'Cancelled.');
     
-    console.warn(`Primary TTS (Google Translate) failed: ${err.message}. Falling back to Gemini API...`);
+    console.warn(`Primary TTS (Google Translate MP3) failed: ${err.message}. Falling back to Gemini API...`);
     
-    // FALLBACK METHOD: Gemini API
+    // FALLBACK 1: Gemini API
     try {
-      return await synthesizeWithGemini(trimmed, language, signal);
+      // Gemini expects the original text usually, but since we already translated it, 
+      // we can feed it the translated text so it doesn't have to translate it again.
+      return await synthesizeWithGemini(textToSpeak, language, signal);
     } catch (fallbackErr) {
-      if (fallbackErr instanceof TtsError) throw fallbackErr;
-      throw new TtsError('TTS_UNAVAILABLE', 'Both TTS services failed.', { retryable: true });
+      console.warn(`Fallback 1 (Gemini) failed: ${fallbackErr.message}. Triggering Native TTS fallback...`);
+      
+      // FALLBACK 2: Native Web Speech API
+      // Both cloud services failed. We throw a special error with the translated text
+      // so the frontend can catch it and speak it natively.
+      throw new TtsError('TTS_FALLBACK_NATIVE', 'Cloud TTS failed, use native.', { 
+        retryable: true, 
+        fallbackText: textToSpeak 
+      });
     }
-<<<<<<< HEAD
-=======
-
-    console.error('translate error:', err.message);
-
-    if (err.message?.includes('TooManyRequests') || err.statusCode === 429) {
-      throw new TtsError('TTS_RATE_LIMIT', 'Translation is busy. Try later.', { retryable: true });
-    }
-
-    throw new TtsError('TTS_UNAVAILABLE', 'Translation service error.', { retryable: true });
->>>>>>> b49382c2ffcbd6aff43ec44a8d68d905faf0ed53
   }
 }

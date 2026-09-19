@@ -1,6 +1,7 @@
 // Native TTS client: fetches translated text from backend and plays it using browser API.
 // Shows a toast overlay while loading/playing.
 
+let currentAudio = null;
 let currentUtterance = null;
 let currentAbort = null;
 let isSpeaking = false;
@@ -23,25 +24,51 @@ function hideToast(delay = 1200) {
   hideTimer = setTimeout(() => { if (toastEl) toastEl.hidden = true; }, delay);
 }
 
-/**
- * Request translation for `text` in `language` from backend, then play it via native TTS.
- * Stops any in-progress playback first.
- */
+function playNativeTTS(translatedText, language) {
+  if (!('speechSynthesis' in window)) {
+    showToast('?? Native TTS not supported');
+    hideToast(2500);
+    return;
+  }
+  
+  const utterance = new SpeechSynthesisUtterance(translatedText);
+  utterance.lang = language;
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+
+  utterance.onstart = () => {
+    isSpeaking = true;
+    showToast('?? Reading??);
+  };
+
+  utterance.onend = () => {
+    isSpeaking = false;
+    currentUtterance = null;
+    showToast('?? Done');
+    hideToast();
+  };
+
+  utterance.onerror = (e) => {
+    isSpeaking = false;
+    currentUtterance = null;
+    showToast('?? Playback failed');
+    console.error('SpeechSynthesisError:', e);
+    hideToast(2500);
+  };
+
+  currentUtterance = utterance;
+  window.speechSynthesis.speak(utterance);
+}
+
 export async function readAloud(text, language = 'en') {
   stop(); // cancel anything in flight
 
   if (!text || !text.trim()) return;
 
-  if (!('speechSynthesis' in window)) {
-    showToast('⚠ Native TTS not supported');
-    hideToast(2500);
-    return;
-  }
-
   const controller = new AbortController();
   currentAbort = controller;
 
-  showToast('🔊 Translating…');
+  showToast('?? Translating??);
 
   try {
     const res = await fetch('/api/tts', {
@@ -53,52 +80,49 @@ export async function readAloud(text, language = 'en') {
 
     if (!res.ok) {
       const body = await res.json().catch(() => null);
+      if (body?.error?.code === 'TTS_FALLBACK_NATIVE' && body.error.fallbackText) {
+        // Both cloud MP3 methods failed, fallback to native window.speechSynthesis
+        playNativeTTS(body.error.fallbackText, language);
+        return;
+      }
+      
       const msg = body?.error?.message || 'Translation unavailable';
-      showToast(`⚠ ${msg}`);
+      showToast(`?? ${msg}`);
       hideToast(2500);
       return;
     }
 
-    const { text: translatedText } = await res.json();
+    // Success! We got an MP3 blob back.
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    currentAudio = new Audio(url);
     
-    if (!translatedText) {
-      showToast('⚠ Translation failed');
-      hideToast(2500);
-      return;
-    }
-
-    showToast('🔊 Reading…');
-
-    const utterance = new SpeechSynthesisUtterance(translatedText);
-    utterance.lang = language;
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-
-    utterance.onstart = () => {
+    currentAudio.onplay = () => {
       isSpeaking = true;
+      showToast('?? Reading??);
     };
 
-    utterance.onend = () => {
+    currentAudio.onended = () => {
       isSpeaking = false;
-      currentUtterance = null;
-      showToast('🔊 Done');
+      currentAudio = null;
+      URL.revokeObjectURL(url);
+      showToast('?? Done');
       hideToast();
     };
 
-    utterance.onerror = (e) => {
+    currentAudio.onerror = () => {
       isSpeaking = false;
-      currentUtterance = null;
-      showToast('⚠ Playback failed');
-      console.error('SpeechSynthesisError:', e);
+      currentAudio = null;
+      URL.revokeObjectURL(url);
+      showToast('?? Playback failed');
       hideToast(2500);
     };
 
-    currentUtterance = utterance;
-    window.speechSynthesis.speak(utterance);
+    await currentAudio.play();
     
   } catch (err) {
     if (err.name === 'AbortError') return; // intentional stop
-    showToast('⚠ TTS failed');
+    showToast('?? TTS failed');
     hideToast(2500);
   }
 }
@@ -107,9 +131,16 @@ export async function readAloud(text, language = 'en') {
 export function stop() {
   clearTimeout(hideTimer);
   if (currentAbort) { currentAbort.abort(); currentAbort = null; }
+  
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
   }
+  
   isSpeaking = false;
   currentUtterance = null;
   if (toastEl) toastEl.hidden = true;
@@ -117,6 +148,7 @@ export function stop() {
 
 /** @returns {boolean} Whether audio is currently playing. */
 export function isPlaying() {
+  if (currentAudio && !currentAudio.paused) return true;
   if ('speechSynthesis' in window) {
     return window.speechSynthesis.speaking || isSpeaking;
   }
