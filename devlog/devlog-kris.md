@@ -519,3 +519,30 @@
 - 沒有新的 migration，全部沿用 007／011 的欄位。
 - Weather 畫面的 `advise()` 仍是另一套規則（計畫第 3 項後半，還沒做）。
 - 新畫面沿用論壇的 `ForumPicker` 和市場的 `MarketText`，改這兩個元件時請留意 Today's Farm。
+
+---
+
+## 202609192032 GMT+8 — 修 main 的 CI；todays-farm rebase 到 i18n 之後
+
+### 發現／問題
+
+- main 的 CI 在 `2fb73a4`、`fa40588` 都失敗：craby168 的 TTS 改成回傳音檔，但 TTS 快取測試還在檢查 `{ ok, text }`；`ttsService.test.js` 被刪除；TTS 錯誤回應少了 requestId。`2fb73a4` 的 `frontend/js/tts.js` 還有語法錯誤（emoji 變成 `??`，吃掉字串結尾引號，整個 app 會白畫面），Yoyo 在 `fa40588` 修好了。
+- Yoyo 的 i18n（`b5507ce`）把 `farmOps.js` 幾乎每個字串都包上 `t()`，和 todays-farm 的改寫衝突；`weather.js` 也有小衝突。
+
+### 做了什麼改動
+
+- main `3543cc1`：TTS 快取測試改成檢查音檔；新增「兩種雲端語音都失敗時回傳 `fallbackText`」的測試；TTS 錯誤回應改回共用格式（有 requestId）。GitHub CI 通過。
+- todays-farm rebase 到最新 main：rebase 時 `farmOps.js` 先採用本分支的版本，`weather.js` 手動合併（`wmo` 匯出，並保留翻譯）。最後一個 commit 把 `farmOps.js` 全部字串重新包上 `t()`，沿用 Yoyo 的 key，日期改用 `dateLocale`；三個語言各新增 120 條翻譯，並刪除 5 條已經沒有畫面使用的 key。
+- 噴藥最佳時段多回傳 `watch`（要注意的條件），讓前端能用會員的語言組句子。
+
+### 部署與驗證
+
+- 本機 172/172 測試通過（含 i18n 測試）、smoke 通過、前端全部檔案可解析。
+- `farm-dev` 240×320：英文與 Hindi 模式都驗證了農場清單、儀表板、任務詳情、Options、取消原因選單。
+- **todays-farm 尚未 push、尚未合進 main、尚未部署。**
+
+### 組員注意事項
+
+- 介面語言以會員個人資料為準（登入後會覆寫 localStorage），測試其他語言要改個人資料的語言。
+- 新加的 Hindi／Bengali／Vietnamese 譯文由我撰寫，請母語組員看過再 demo。
+- @craby168：`ttsService.test.js` 已刪除，新版 service 沒辦法注入 Google 翻譯，建議之後把測試補回來。
