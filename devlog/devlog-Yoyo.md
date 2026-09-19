@@ -133,3 +133,13 @@
 - **給組員的注意事項**
   - 判斷按鍵請**優先用 `e.key`**，`code`/`keyCode` 只當備援（`#` 的 `code` 與 `3` 相同）。
   - 上一筆「T9 送出不要只靠 `#`」的顧慮在 simulator 上解除；**實機仍待驗證**，備援 Enter 仍建議保留。
+
+## 202609191221 · 實機驗證準備：新增 keytest 測試頁
+
+- **發現的問題**：實機上進 app 再看頂端小字逐鍵記錄很不方便；右軟鍵不送 keydown，需要觀察平台實際觸發了什麼；字型（emoji/印地語/孟加拉語）與 viewport 實際尺寸也尚未驗證。
+- **想解決什麼**：一頁看完實機所有關鍵資訊，並與 simulator 結果對照。
+- **做了什麼改動**：新增 `frontend/keytest.html`（無依賴、無 build）：顯示 keydown/keyup 最近 9 筆（key/code/kc/shift）、viewport 與 dpr、emoji + 印地語 + 孟加拉語字型渲染、UA，並監聽 popstate / pagehide / visibilitychange（用來看右軟鍵實際做了什麼；頁面載入時先 pushState 讓它有 history 可返回）。
+- **給組員的注意事項**
+  - 測試網址：部署後 `/keytest.html`。
+  - 記錄格式：每按一個鍵抄最後一行；右軟鍵看有沒有 `EVENT popstate` 或 `EVENT pagehide`。
+  - 若 emoji/印地語顯示成方框，代表實機缺字型，天氣頁要靠文字標籤，i18n 只主打 en。

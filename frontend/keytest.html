@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>KeyTest</title>
+<style>
+  html,body{margin:0;background:#000;color:#0f0;font:11px/1.25 monospace;overflow:hidden;word-break:break-all}
+  #info{color:#ff0;padding:2px;border-bottom:1px solid #333}
+  #log div{padding:0 2px}
+  #log div:first-child{background:#0f0;color:#000}
+  .ev{color:#0ff}
+</style>
+</head>
+<body>
+<div id="info"></div>
+<div id="log"></div>
+<script>
+// Real-device checklist page: press every key, note the last line. No dependencies.
+var log = document.getElementById('log'), n = 0;
+function add(text, cls) {
+  var d = document.createElement('div');
+  d.textContent = (++n) + ' ' + text;
+  if (cls) d.className = cls;
+  log.insertBefore(d, log.firstChild);
+  while (log.childNodes.length > 9) log.removeChild(log.lastChild);
+}
+function info() {
+  var emoji = '☀️ ⛅ 🌧️';
+  document.getElementById('info').textContent =
+    'view ' + innerWidth + 'x' + innerHeight + ' dpr ' + devicePixelRatio +
+    ' hist ' + history.length + ' | ' + emoji + ' हिन्दी বাংলা | ' + navigator.userAgent.slice(0, 70);
+}
+info();
+addEventListener('resize', info);
+addEventListener('keydown', function (e) {
+  add('key="' + e.key + '" code="' + e.code + '" kc=' + e.keyCode + ' shift=' + e.shiftKey);
+  e.preventDefault();
+});
+addEventListener('keyup', function (e) { add('up ' + e.key, 'ev'); });
+addEventListener('popstate', function () { add('EVENT popstate hist=' + history.length, 'ev'); });
+addEventListener('pagehide', function () { add('EVENT pagehide', 'ev'); });
+document.addEventListener('visibilitychange', function () { add('EVENT visibility=' + document.visibilityState, 'ev'); });
+history.pushState({}, ''); // so the right soft key has history to go back through
+add('ready: press each key', 'ev');
+</script>
+</body>
+</html>
