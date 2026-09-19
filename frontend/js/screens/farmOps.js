@@ -217,8 +217,64 @@ export const FarmTaskCreate = { name:'FarmTaskCreate',title:(ctx)=>ctx.params?.p
     if(i>p.fields.length)return;return createFromPreset(ctx,p.preset,p.fields[i]?.id||null);},
 };
 
-export const FarmRecords = asyncScreen({name:'FarmRecords',title:'Farm Records',load:()=>api.records(farmOps.activeFarmId),renderData(data){const root=el('list');data.items.forEach(r=>{const x=el('item ops-record-row');x.append(el('',r.task_title||r.record_type),el('ops-task-meta',`${String(r.local_date).slice(0,10)} · ${r.actor_name||'System'}`));root.append(x);});return data.items.length?root:message('No farm records yet. Completing work creates records.');}});
-export const FarmTeam = asyncScreen({name:'FarmTeam',title:'Team',load:()=>api.members(farmOps.activeFarmId),renderData(data){const root=el('list');data.items.forEach(m=>{const x=el('item ops-team-row');x.append(el('',m.display_name),el('ops-task-meta',`${m.role} · ${m.open_tasks} tasks · ${m.workload_minutes} min`));root.append(x);});return root;}});
-export const FarmFields = asyncScreen({name:'FarmFields',title:'Fields & Crops',load:()=>api.fields(farmOps.activeFarmId),renderData(data){const root=el('list');data.items.forEach(f=>{const x=el('item ops-field-row');x.append(el('',f.name),el('ops-task-meta',`${f.area_value||'?'} ${f.area_unit||''} · ${f.cycles.map(c=>`${c.cropCode} ${c.stage||''}`).join(', ')||'No active crop'}`));root.append(x);});return root;}});
+// ---- Records, team and fields: lists that open a detail ----
+const words=(k)=>String(k).replace(/([a-z])([A-Z])/g,'$1 $2').replace(/_/g,' ').replace(/^./,(c)=>c.toUpperCase());
+// A record's data as "Label: value" lines; nested objects (a task result) become "Result · Label: value".
+function dataLines(data,prefix=''){
+  const out=[];
+  for(const [k,v] of Object.entries(data||{})){
+    if(k==='demo'||v==null||v==='')continue;
+    if(typeof v==='object'&&!Array.isArray(v)) out.push(...dataLines(v,`${prefix}${words(k)} · `));
+    else out.push(`${prefix}${words(k)}: ${Array.isArray(v)?v.join(', '):typeof v==='string'?v.replace(/_/g,' '):v}`);
+  }
+  return out;
+}
+// A task in a member's or a field's list: when, and where or who.
+const datedRow=(t,meta)=>{const r=el(`item ops-task-row priority-${t.priority||'normal'}`);r.dataset.id=t.id;const b=el('ops-task-body');
+  b.append(el('ops-task-title',t.title),el('ops-task-meta',`${niceDate(t.localDate)} · ${meta(t)} · ${(STATUS[t.status]||t.status).split(' ').slice(1).join(' ')}`));r.append(el('ops-task-status',(STATUS[t.status]||'□').split(' ')[0]),b);return r;};
+const openTask=(node,ctx)=>{if(node?.dataset.id)ctx.router.push('FarmTaskDetail',{id:node.dataset.id});};
 
-export const farmOpsScreens={FarmGate,TodayDashboard,FarmUpcoming,MyFarmTasks,FarmCalendar,FarmTaskDetail,FarmTaskCreate,FarmRecords,FarmTeam,FarmFields};
+export const FarmRecords = asyncScreen({name:'FarmRecords',title:'Farm Records',load:()=>api.records(farmOps.activeFarmId),
+  renderData(data){const root=el('list');data.items.forEach((r,i)=>{const x=el('item ops-record-row');x.dataset.i=i;x.append(el('',r.task_title||words(r.record_type)),el('ops-task-meta',`${String(r.local_date).slice(0,10)} · ${r.actor_name||'System'}`));root.append(x);});return data.items.length?root:message('No farm records yet. Completing work creates records.');},
+  onEnter(node,ctx,_i,data){const r=data?.items[Number(node?.dataset.i)];if(r)ctx.router.push('FarmRecordDetail',{record:r});}});
+
+export const FarmRecordDetail = { name:'FarmRecordDetail',title:'Record',softRight:{label:'Back',handler:(ctx)=>ctx.router.pop()},
+  render(ctx){const r=ctx.params.record,root=el('ops-page');
+    root.append(el('ops-priority',words(r.record_type).toUpperCase()),el('ops-detail-title',r.task_title||words(r.record_type)),
+      el('ops-task-meta',`${niceDate(String(r.local_date).slice(0,10))} · ${r.actor_name||'System'}`),el('ops-task-meta',r.field_name||'No field'));
+    const lines=dataLines(r.data);root.append(el('ops-section-title','DETAILS'));
+    if(lines.length)lines.forEach((l)=>root.append(el('ops-description',l)));else root.append(el('ops-description','No details recorded.'));
+    if(r.task_id){const x=el('item ops-action','Open the task');x.dataset.id=r.task_id;root.append(x);}
+    return root;},
+  onEnter:openTask,
+};
+
+export const FarmTeam = asyncScreen({name:'FarmTeam',title:'Team',load:()=>api.members(farmOps.activeFarmId),
+  renderData(data){const root=el('list');data.items.forEach((m,i)=>{const x=el('item ops-team-row');x.dataset.i=i;x.append(el('',m.display_name),el('ops-task-meta',`${m.role} · ${m.open_tasks} tasks · ${m.workload_minutes} min`));root.append(x);});return root;},
+  onEnter(node,ctx,_i,data){const m=data?.items[Number(node?.dataset.i)];if(m)ctx.router.push('FarmMemberDetail',{member:m});}});
+
+export const FarmMemberDetail = asyncScreen({name:'FarmMemberDetail',title:(ctx)=>ctx.params?.member?.display_name||'Member',
+  load:(ctx)=>api.tasks(farmOps.activeFarmId,`assignee=${ctx.params.member.user_id}&open=true`),
+  renderData(data,ctx){const m=ctx.params.member,root=el('ops-page');
+    root.append(el('ops-detail-title',m.display_name),el('ops-task-meta',`${m.role}${m.village?` · ${m.village}`:''}`),el('ops-progress',`${data.items.length} open tasks · ${m.workload_minutes} min planned`));
+    root.append(el('ops-section-title','OPEN TASKS'));data.items.forEach((t)=>root.append(datedRow(t,(x)=>x.fieldName||'No field')));
+    if(!data.items.length)root.append(message('Nothing open for this member.'));return root;},
+  onEnter:openTask});
+
+export const FarmFields = asyncScreen({name:'FarmFields',title:'Fields & Crops',load:()=>api.fields(farmOps.activeFarmId),
+  renderData(data){const root=el('list');data.items.forEach((f,i)=>{const x=el('item ops-field-row');x.dataset.i=i;x.append(el('',f.name),el('ops-task-meta',`${f.area_value||'?'} ${f.area_unit||''} · ${f.cycles.map(c=>`${c.cropCode} ${c.stage||''}`).join(', ')||'No active crop'}`));root.append(x);});return data.items.length?root:message('No fields yet.');},
+  onEnter(node,ctx,_i,data){const f=data?.items[Number(node?.dataset.i)];if(f)ctx.router.push('FarmFieldDetail',{field:f});}});
+
+const shortDate=(v)=>v?niceDate(String(v).slice(0,10)):'?';
+export const FarmFieldDetail = asyncScreen({name:'FarmFieldDetail',title:(ctx)=>ctx.params?.field?.name||'Field',
+  load:(ctx)=>api.tasks(farmOps.activeFarmId,`field=${ctx.params.field.id}&open=true`),
+  renderData(data,ctx){const f=ctx.params.field,root=el('ops-page');
+    root.append(el('ops-detail-title',f.name),el('ops-task-meta',`${f.area_value?`${Number(f.area_value)} ${f.area_unit||''}`:'Area not set'}${f.irrigation_type?` · ${f.irrigation_type} irrigation`:''}`));
+    root.append(el('ops-section-title','CROPS'));
+    if(!f.cycles.length)root.append(el('ops-description','No active crop.'));
+    f.cycles.forEach((c)=>root.append(el('ops-description',`${words(c.cropCode)}${c.variety?` ${c.variety}`:''} · ${c.stage||c.status}`),el('ops-task-meta',`Planted ${shortDate(c.plantingDate)} · harvest ${shortDate(c.targetHarvestDate)}`)));
+    root.append(el('ops-section-title','OPEN TASKS'));data.items.forEach((t)=>root.append(datedRow(t,(x)=>x.assignments?.[0]?.name||'Unassigned')));
+    if(!data.items.length)root.append(message('Nothing open on this field.'));return root;},
+  onEnter:openTask});
+
+export const farmOpsScreens={FarmGate,TodayDashboard,FarmUpcoming,MyFarmTasks,FarmCalendar,FarmTaskDetail,FarmTaskCreate,FarmRecords,FarmRecordDetail,FarmTeam,FarmMemberDetail,FarmFields,FarmFieldDetail};

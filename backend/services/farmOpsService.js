@@ -208,6 +208,10 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
     if (q.to) { params.push(dateOnly(q.to, 'to')); where.push(`t.local_date <= $${params.length}::date`); }
     if (q.mine === 'true') { params.push(user.id); where.push(`EXISTS (SELECT 1 FROM app.farm_task_assignments ma WHERE ma.task_id=t.id AND ma.user_id=$${params.length} AND ma.status<>'removed')`); }
     if (q.status) { params.push(q.status); where.push(`t.status=$${params.length}`); }
+    // One member's or one field's work, e.g. for the Team and Fields detail screens.
+    if (q.assignee) { params.push(String(q.assignee)); where.push(`EXISTS (SELECT 1 FROM app.farm_task_assignments aa WHERE aa.task_id=t.id AND aa.user_id::text=$${params.length} AND aa.status<>'removed')`); }
+    if (q.field) { params.push(String(q.field)); where.push(`t.field_id::text=$${params.length}`); }
+    if (q.open === 'true') where.push(`t.status NOT IN ('completed','verified','cancelled','skipped')`);
     const rows = (await pool.query(taskSelect + ` WHERE ${where.join(' AND ')}` + taskGroup + ` ORDER BY t.local_date,t.start_at NULLS LAST`, params)).rows.map(shapeTask);
     return { items: rows };
   }
@@ -370,7 +374,7 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
 
   async function fields(user, farmId) {
     await membership(user.id, farmId);
-    const r = await pool.query(`SELECT f.*, COALESCE(json_agg(json_build_object('id',c.id,'cropCode',c.crop_code,'stage',c.stage,'plantingDate',c.planting_date,'targetHarvestDate',c.target_harvest_date,'status',c.status)) FILTER (WHERE c.id IS NOT NULL),'[]') cycles
+    const r = await pool.query(`SELECT f.*, COALESCE(json_agg(json_build_object('id',c.id,'cropCode',c.crop_code,'variety',c.variety,'stage',c.stage,'plantingDate',c.planting_date,'targetHarvestDate',c.target_harvest_date,'status',c.status)) FILTER (WHERE c.id IS NOT NULL),'[]') cycles
       FROM app.farm_fields f LEFT JOIN app.crop_cycles c ON c.field_id=f.id AND c.status IN ('planned','active') WHERE f.farm_id=$1 GROUP BY f.id ORDER BY f.name`, [farmId]);
     return { items: r.rows };
   }

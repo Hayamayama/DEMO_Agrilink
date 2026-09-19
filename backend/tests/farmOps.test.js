@@ -246,3 +246,18 @@ test('the market row covers the crops the farm grows, else the member\'s crops',
     assert.deepEqual(asked, ['rice']);
   } finally { await t.close(); }
 });
+
+test('tasks can be listed for one member or one field, open ones only', async () => {
+  const t = await setup();
+  try {
+    const q = (query) => t.ops.listTasks(t.owner, FARM_DEMO_ID, query).then((r) => r.items.map((x) => x.title).sort());
+    const meena = await q({ assignee: t.manager.id, open: 'true' });
+    assert.deepEqual(meena, ['Check rice leaf spots', 'Inspect weeds', 'Spray vegetable plot']);
+    const field = (await t.pool.query(`SELECT id FROM app.farm_fields WHERE farm_id=$1 AND name='Vegetable Plot'`, [FARM_DEMO_ID])).rows[0].id;
+    assert.ok(!(await q({ field, open: 'true' })).includes('Record tomato soil moisture'), 'completed work is left out');
+    assert.ok((await q({ field })).includes('Record tomato soil moisture'));
+    assert.deepEqual(await q({ assignee: 'not-a-uuid' }), []);
+    const fields = (await t.ops.fields(t.owner, FARM_DEMO_ID)).items;
+    assert.equal(fields.find((f) => f.name === 'Field A').cycles[0].variety, 'Swarna');
+  } finally { await t.close(); }
+});
