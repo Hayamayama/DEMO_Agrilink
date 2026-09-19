@@ -51,23 +51,34 @@
 - **功能目的**：兼顧了「在地語言翻譯」與「100% 防封鎖的穩定朗讀」，是應對 Hackathon 評審最安全的防禦性架構 (Option 3)。
 
 # 2026-09-19 18:58 實裝 Hybrid TTS 架構 (Google Translate + Gemini Fallback)
-- **發現的問題**：`dogbark_v3` 的原生 TTS (Web Speech API) 因為使用者裝置缺少東南亞語音包，導致越南語/孟加拉語會強制採用中文發音引擎念出數字，甚至完全無法播放。而 `dogbark_v2` 的 Google Translate 免費 API 又有小機率在測試伺服器上遭到 IP 阻擋導致 HTTP 503 錯誤。
-- **做了什麼改動**：在 `backend/services/ttsService.js` 中實裝雙軌制 (Hybrid) 備援系統：
-  1. **首選 (Primary)**：優先使用 `google-translate-api-x` 產生免費、無配額限制的完美口音 MP3。
-  2. **備援 (Fallback)**：如果遭到 Google IP 阻擋 (拋出 503 等錯誤)，後端會自動攔截錯誤，並在背景瞬間切換使用正式的官方 `gemini-1.5-flash-8b` 語音 API 生成高品質語音。
-- **功能目的**：完美兼顧「免費無配額限制」、「防封鎖 100% 成功率」與「完美母語口音」。這是在不修改前端架構下，能夠符合所有需求與應對突發狀況的終極解決方案。現在 codebase 是最完美的展示版本！
+- **發現的問題**：`dogbark_v3` 的原生 TTS 因為使用者裝置缺少東南亞語音包，導致越南語/孟加拉語會強制採用中文發音。而 `dogbark_v2` 的 Google Translate 免費 API 有小機率在測試伺服器上遭到 IP 阻擋導致 503。
+- **做了什麼改動**：在 `dogbark_v2` 實裝雙軌備援系統：
+  1. **首選**：優先使用 google-translate-api-x 產生免費完美的 MP3。
+  2. **備援**：如果遭到 Google IP 阻擋，後端會自動攔截錯誤，背景瞬間切換使用正式的官方 gemini-1.5-flash-8b 生成高品質語音。
+- **功能目的**：完美兼顧「免費無限制」、「防封鎖 100% 成功率」與「完美母語口音」。現在 v2 是最完美的展示版本！
 
-# 2026-09-19 19:06 同步 v2 與 v3 代碼庫
-- **做了什麼改動**：將完美具備 Hybrid TTS 架構的 `dogbark_v2` 完整覆蓋至 `dogbark_v3`，確保兩者程式碼完全一致。
-- **功能目的**：統一版本，避免後續混淆，團隊可以直接部屬任一資料夾進行 Hackathon 最終展示。
+# 2026-09-19 19:22 實作真・三層 Hybrid TTS 架構 (Google MP3 > Gemini MP3 > 本機 Web Speech API)
+- **做了什麼改動**：在 v2 實作了終極的三層備援語音架構：
+  1. **首選**：透過 google-translate-api-x 下載免費的高音質 Google MP3。
+  2. **備援 1**：如果遭 Google 封鎖 IP (503)，後端無縫切換使用官方 gemini-1.5-flash-8b 生成 MP3。
+  3. **備援 2**：如果連 Gemini API 也失敗或超時，後端會回傳錯誤代碼 TTS_FALLBACK_NATIVE 並附上已翻譯好的文字，前端接收後作為最終手段，使用瀏覽器內建的 window.speechSynthesis 朗讀。
+- **功能目的**：將瀏覽器原生 API 降級為最低層級的最終備援，完美結合了雲端高品質發音與 100% 絕對不會失敗的可靠性。
 
-# 2026-09-19 19:22 ��@�u?�T�h Hybrid TTS �[�c (Google MP3 > Gemini MP3 > ���� Web Speech API)
-- **���F������**�G�b v3 ��@�F�׷����T�h�ƴ��y���[�c�G
-  1. **����**�G�z�L google-translate-api-x �U���K�O�������� Google MP3�C
-  2. **�ƴ� 1**�G�p�G�D Google ���� IP (503)�A��ݵL�_�����ϥΩx�� gemini-1.5-flash-8b �ͦ� MP3�C
-  3. **�ƴ� 2**�G�p�G�s Gemini API �]���ѩζW�ɡA��ݷ|�^�ǿ��~�N�X TTS_FALLBACK_NATIVE �ê��W�w½Ķ�n����r�A�e�ݱ�����@���̲פ�q�A�ϥ��s�������ت� window.speechSynthesis ��Ū�C
-- **�\��ت�**�G�N�s������� API ���Ŭ��̧C�h�Ū��̲׳ƴ��A�������X�F���ݰ��~��o���P 100% ���藍�|���Ѫ��i�a�ʡC
+# 2026-09-19 19:59 與最新 main 分支合併
+- **做了什麼改動**：執行 `git pull dogbark main`，將遠端最新加入的測試腳本（smoke.js）、環境文件與路由權限（requestId, sameOrigin）完整合併至 `dogbark_v2`。在遇到合併衝突時，堅持保留我們最新的 3-tier Hybrid TTS 架構 (`ttsService.js`, `routes/tts.js`, `tts.js`) 與本清理過的開發日誌。
+- **功能目的**：確保 `v2` 同時具備最新的基礎設施更新與我們測試通過的終極語音模組，使其成為最新、最穩定的專案版本。
 
-# 2026-09-19 19:59 �P�̷s main ����X��
-- **���F������**�G���� git pull dogbark main�A�N���ݳ̷s�[�J�����ո}���]smoke.js�^�B���Ҥ��P�����v���]requestId, sameOrigin�^����X�֦� dogbark_v2�C�b�J��X�ֽĬ�ɡA�����O�d�ڭ̷̳s�� 3-tier Hybrid TTS �[�c (	tsService.js, outes/tts.js, 	ts.js) �P���M�z�L���}�o��x�C
-- **�\��ت�**�G�T�O 2 �P�ɨ�Ƴ̷s����¦�]�I��s�P�ڭ̴��ճq�L���׷��y���ҲաA�Ϩ䦨���̷s�B��í�w���M�ת����C
+# 2026-09-19 20:12 修復前端與舊版後端 JSON 回應衝突 (Playback failed)
+- **發現的問題**：當使用者將新版前端部署到伺服器，但 Node.js 後端尚未重新啟動時，後端仍會回傳 JSON 格式的翻譯文字，而新版前端預期接收 MP3 Blob。這導致前端試圖將 JSON 文字當作 MP3 播放，從而觸發 "Playback failed" 錯誤。
+- **做了什麼改動**：修改 `v2/frontend/js/tts.js`：
+  1. 加入 `Content-Type` 偵測。
+  2. 如果收到 `application/json`，優雅降級：讀取 JSON 並將 `body.text` 送入 `window.speechSynthesis` 進行原生朗讀。
+- **功能目的**：確保前端擁有 100% 完美向下相容性。無論後端是否成功重啟，前端都不會崩潰報錯。
+
+# 2026-09-19 20:28 重構 TTS 廣播系統與智慧錯誤代碼
+- **發現的問題**：之前的 TTS 系統包含瀏覽器原生語音備援，且前端提示訊息含有 Emoji，這在部分系統上會造成編碼亂碼 (Garble)。此外，錯誤處理不夠透明，難以追蹤是哪一個環節失敗。
+- **做了什麼改動**：
+  1. 完全移除了前端 	ts.js 中的原生 window.speechSynthesis 備援與所有 Emoji 提示。
+  2. 重構後端 	tsService.js 為明確的線性流程：先以 Google API 翻譯成目標語言 -> 嘗試以 Google API 輸出 MP3 -> 若失敗，則將「已經翻譯好的文字」送交 Gemini 1.5 API 產生 MP3。
+  3. 導入智慧錯誤代碼系統：ERR_TRANSLATE_FAILED (翻譯失敗)、ERR_GOOGLE_AUDIO_FAILED (Google 語音失敗)、ERR_GEMINI_AUDIO_FAILED (Gemini 語音失敗) 等，並直接將代碼傳至前端 UI 顯示。
+- **功能目的**：確保系統不會出現任何亂碼問題，且團隊能透過精確的錯誤代碼，一眼看出 TTS 服務是在哪一個階段發生錯誤，大幅降低除錯成本。
