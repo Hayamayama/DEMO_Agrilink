@@ -438,3 +438,18 @@
 - **驗證結果**（從外部走 HTTPS，只讀，沒有建立任何資料）：`/api/market/listings`、`/api/market/sync` 未登入回 401；`/css/market.css`、`/js/market/marketSync.js` 回 200；首頁有載入 market.css；`/api/forum/communities` 200，`/api/prices` 缺參數回 400（原本行為）。
 - **還沒驗證**：登入後的實際流程（避免在正式站建立示範資料）；兩台真機同時操作；Cloud Phone 鍵碼。
 - **給組員的注意事項**：主機 Node 是 18（`package.json` 要求 >=20，安裝時有 EBADENGINE 警告，但目前正常運作）。手機或瀏覽器若看到舊畫面，請強制重新整理。主機 `app.crops` 需要有資料，發布貨源的作物選單才不會是空的。
+
+## 202609191642 · Local Market 測資（marketSeed）
+
+- **想解決的問題**：主機上 Local Market 是空的，兩機示範（A 發布 → B 出價 → A 接受）與各畫面都需要現成資料。
+- **做了什麼改動**
+  - 新增 `backend/db/marketSeed.js`（`npm run market:seed`）：透過 `marketService` 建立資料（所以預留數量、事件、通知都和真實操作一致），再標記 `is_demo`，畫面上會顯示 DEMO。每個項目都有固定 requestId，重跑不會重複，也會把示範貨源的到期日與備貨日往後延。
+  - 內容：7 筆貨源、3 筆買家需求、4 段議價——Ravi 出價被 Meena 還價（輪到 Ravi）、Meena 對 Ravi 的稻米出價（等 Ravi 回覆）、Ravi 買固定價洋蔥且 Meena 已接受（等雙方確認，貨源 100 kg 已預留）、Ravi 買 5 quintal 小麥並已走完（完成 + 互評，貨源顯示已售 5）。
+  - **Ravi K. 和 Meena S. 同在 Bihar，是兩機示範組**；Asha（Rampur）、Minh（An Giang，VND）、Rahim（Rajshahi，BDT）各在自己的地區有一筆貨源，所以他們的列表不是空的。
+  - `--reset` 可移除所有示範資料。offer revision 與事件表是 append-only，所以 reset 用 `session_replication_role = replica`，只有 superuser 能執行（`RESET_DATABASE_URL`）。
+  - 測試 `tests/marketSeed.test.js`：涵蓋各狀態、重跑不變、reset 後歸零可再灌。
+- **在主機的執行**：把腳本暫時複製到主機執行後刪除（`market demo: 7 listings, 3 requests, 4 negotiations`），主機上 repo 維持乾淨；資料庫核對：7 筆示範貨源（`is_demo = true`）、deal 一筆 completed / 一筆 awaiting_confirmation、offer 為 countered / open / accepted ×2。
+- **給組員的注意事項**
+  - 主機上有一筆非示範的貨源（Test_Admin，洋蔥 100 kg，₹20）——不是這次建立的，seed / reset 都不會動它。
+  - 示範帳號手機 `9100000001`–`9100000005`，PIN 由主機的 `DEMO_USER_PIN` 決定。
+  - 想重來一次兩機示範：以 postgres 執行 reset 再 seed。
