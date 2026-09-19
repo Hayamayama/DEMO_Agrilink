@@ -20,3 +20,18 @@
 - **發現的問題**：`dogbark_v1` 含 TTS，而目標 `dogbark_v2` 需保留後續的 Local Market 與 Today’s Farm 程式碼；直接以舊版覆蓋會遺失 v2 的最新功能。
 - **做了什麼改動**：確認 `dogbark_v2` 的最新 HEAD 為 `8fa5224`，且 TTS 整合 commit `a511e6f` 已在其歷史中。比對 v1/v2 的 `ttsService.js`、`routes/tts.js`、`tts.js`、`screenText.js` 雜湊一致，並確認 v2 `server.js` 已掛載 `/api/tts`、`router.js` 已支援登入後 `#` 朗讀／再次 `#` 停止。因此保留 v2 的 Local Market 與 Today’s Farm 程式碼，不以 v1 覆蓋。執行 v2 測試：TTS suite 7 項通過，整體已有 63 項通過。
 - **給組員的注意事項**：目前 `npm test` 另有 9 項既有環境／測試設定失敗：缺少 dev dependency `@electric-sql/pglite`，以及 `test/t9.test.js` 將前端 ESM 視為 CommonJS；這些與 TTS 合併無關。另保留未追蹤的 `backend/testTts.js`，未擅自刪除。部署前請在 v2 的 `backend/.env` 設定 `GEMINI_API_KEY` 與可用的 `TTS_MODEL`。
+
+# 2026-09-19 17:26 移除 API 依賴並改用 Native Web Speech API (v3 測試版)
+- **做了什麼改動**：在 `dogbark_v3` 中修改 `frontend/js/tts.js`，完全移除對後端 `/api/tts` (Gemini API) 的依賴。改為使用瀏覽器內建的 `window.speechSynthesis` 原生語音 API 來朗讀文字。
+- **功能目的**：作為不依賴任何 API Key 或網路穩定度的測試版本，確保開發團隊或評審能在任何瀏覽器與裝置上直接按下 `#` 鍵，立刻且保證能聽到畫面內容的語音廣播。完全免除任何 400 或 429 的報錯風險。
+
+# 2026-09-19 17:28 略過登入流程 (供 v3 本地測試)
+- **做了什麼改動**：修改 `dogbark_v3/frontend/js/main.js`，強制寫入一個預設的 `identity.profile` 並直接跳轉到 `MainMenu`。
+- **給組員的注意事項**：這只是為了方便在本地直接測試 TTS 而做的暫時改動。上線正式環境前請務必將此檔案復原。
+
+# 2026-09-19 17:34 完全替換 Gemini API 為免費的 Google Translate 語音
+- **做了什麼改動**：
+  1. 安裝 `google-translate-api-x` 套件。
+  2. 完全重寫 `backend/services/ttsService.js`。現在不再依賴 `gemini-1.5-flash-8b`，而是將前端傳來的英文文字在後端翻譯，並直接透過 `google-translate-api-x` 下載免費的 Google 語音 MP3 回傳給前端。
+  3. 復原 `frontend/js/tts.js`，恢復使用 `fetch('/api/tts')`。
+- **功能目的**：徹底解決 Gemini API 的 Rate Limit 與需要 API Key 的痛點，同時保留了「由雲端負責合成高品質語音，不佔用邊緣設備運算資源」的原始設計初衷 (Option A)。

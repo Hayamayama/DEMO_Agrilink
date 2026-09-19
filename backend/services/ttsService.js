@@ -1,8 +1,4 @@
-// Gemini-based Text-to-Speech synthesis service.
-// Uses the Gemini REST API to generate speech audio from text, so we reuse the
-// existing GEMINI_API_KEY without any new billing or service setup.
-
-const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta/models';
+import translate from 'google-translate-api-x';
 
 export class TtsError extends Error {
   constructor(code, message, { retryable = false } = {}) {
@@ -12,101 +8,72 @@ export class TtsError extends Error {
   }
 }
 
-export const TTS_MAX_CHARS = Number(process.env.TTS_MAX_CHARS) || 2000;
+export const TTS_MAX_CHARS = 2000;
+export const isConfigured = () => true;
 
-const config = () => ({
-  apiKey: process.env.GEMINI_API_KEY || '',
-  model: process.env.TTS_MODEL || 'gemini-2.5-flash-preview-tts',
-  timeoutMs: Number(process.env.TTS_TIMEOUT_MS) || 15000,
-});
+// Helper to chunk text by word/punctuation so it stays under 200 chars for TTS
+function chunkText(text, maxLen = 190) {
+  const chunks = [];
+  let current = '';
+  // Split by whitespace or punctuation roughly
+  const words = text.split(/([\s.,;!?]+)/);
+  
+  for (const part of words) {
+    if (current.length + part.length > maxLen) {
+      if (current.trim()) chunks.push(current.trim());
+      current = part;
+    } else {
+      current += part;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks.filter(c => c);
+}
 
-// Map our app language codes to Gemini TTS voice names.
-// Kore = neutral English, Aoede = warm/clear; we pick voices that cover the
-// target languages well on the multimodal endpoint.
-const VOICE_MAP = {
-  en: 'Kore',
-  hi: 'Kore',
-  bn: 'Kore',
-  vi: 'Kore',
-};
-
-export const isConfigured = () => Boolean(config().apiKey);
-
-/**
- * Synthesise speech from text using Gemini's multimodal generateContent with
- * audio output.  Returns { audio: Buffer, mimeType: 'audio/mp3' }.
- *
- * @param {string}  text        The text to speak (will be truncated to TTS_MAX_CHARS).
- * @param {string}  language    ISO language code: en, hi, bn, vi.
- * @param {object}  opts
- * @param {AbortSignal} [opts.signal]     Caller abort signal (e.g. client disconnected).
- * @param {Function}    [opts.fetchImpl]  Replaceable fetch for testing.
- */
-export async function synthesize(text, language = 'en', { signal, fetchImpl = fetch } = {}) {
-  const cfg = config();
-  if (!cfg.apiKey) throw new TtsError('TTS_UNAVAILABLE', 'TTS is not configured.');
-
+export async function synthesize(text, language = 'en', { signal } = {}) {
   const trimmed = String(text || '').trim().slice(0, TTS_MAX_CHARS);
   if (!trimmed) throw new TtsError('TTS_EMPTY', 'No text to read aloud.');
 
-  const voice = VOICE_MAP[language] || VOICE_MAP.en;
-
-  // Build the Gemini request for audio generation.
-  const body = {
-    contents: [{
-      role: 'user',
-      parts: [{ text: `Please read the following aloud clearly and naturally in the appropriate language:\n\n${trimmed}` }],
-    }],
-    generationConfig: {
-      responseModalities: ['AUDIO'],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: voice },
-        },
-      },
-    },
-  };
-
-  const url = `${API_ROOT}/${cfg.model}:generateContent?key=${cfg.apiKey}`;
-  const timeout = AbortSignal.timeout(cfg.timeoutMs);
-  const combined = signal
-    ? (typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : timeout)
-    : timeout;
-
-  let res;
   try {
-    res = await fetchImpl(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: combined,
-    });
+    let textToSpeak = trimmed;
+    
+    // 1. Translate if needed
+    if (language !== 'en') {
+      const translation = await translate(trimmed, { to: language, requestOptions: { signal } });
+      textToSpeak = translation.text;
+    }
+
+    // 2. Chunk text to respect the 200 char limit of Google Translate's TTS endpoint
+    const chunks = chunkText(textToSpeak);
+    if (chunks.length === 0) throw new TtsError('TTS_EMPTY', 'No text to read aloud.');
+
+    // 3. Generate speech audio for all chunks
+    const base64Array = await translate.speak(chunks, { to: language, requestOptions: { signal } });
+    
+    // 4. Concatenate MP3 Buffers
+    const buffers = (Array.isArray(base64Array) ? base64Array : [base64Array])
+      .filter(b64 => b64)
+      .map(b64 => Buffer.from(b64, 'base64'));
+
+    if (buffers.length === 0) {
+      throw new TtsError('TTS_NO_AUDIO', 'TTS did not return audio.', { retryable: true });
+    }
+
+    return {
+      audio: Buffer.concat(buffers),
+      mimeType: 'audio/mp3',
+    };
   } catch (err) {
-    if (signal?.aborted) throw new TtsError('CANCELLED', 'Cancelled.');
-    throw new TtsError('TTS_TIMEOUT', 'TTS is taking too long.', { retryable: true });
+    if (err.name === 'AbortError' || signal?.aborted) {
+      throw new TtsError('CANCELLED', 'Cancelled.');
+    }
+    
+    console.error('tts error:', err.message);
+    
+    if (err.message?.includes('TooManyRequests') || err.statusCode === 429) {
+      throw new TtsError('TTS_RATE_LIMIT', 'TTS is busy. Try later.', { retryable: true });
+    }
+    
+    throw new TtsError('TTS_UNAVAILABLE', 'TTS service error.', { retryable: true });
   }
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    console.error(`tts ${res.status}: ${detail.slice(0, 200)}`);
-    if (res.status === 429) throw new TtsError('TTS_RATE_LIMIT', 'TTS is busy. Try later.', { retryable: true });
-    throw new TtsError('TTS_UNAVAILABLE', 'TTS service error.', { retryable: res.status >= 500 });
-  }
-
-  const data = await res.json();
-
-  // Extract inline audio data from the Gemini response.
-  const candidate = data?.candidates?.[0];
-  const parts = candidate?.content?.parts || [];
-  const audioPart = parts.find((p) => p.inlineData?.mimeType?.startsWith('audio/'));
-
-  if (!audioPart) {
-    console.error('tts: no audio part in response', JSON.stringify(data).slice(0, 300));
-    throw new TtsError('TTS_NO_AUDIO', 'TTS did not return audio.', { retryable: true });
-  }
-
-  return {
-    audio: Buffer.from(audioPart.inlineData.data, 'base64'),
-    mimeType: audioPart.inlineData.mimeType,
-  };
 }
