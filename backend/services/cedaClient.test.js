@@ -7,6 +7,11 @@ test('CEDA response reader accepts the live output.data envelope', () => {
   assert.deepEqual(cedaRecords({ commodities: [{ id: 3 }] }, 'commodities'), [{ id: 3 }]);
 });
 
+test('CEDA geography records preserve the live flat census fields', () => {
+  const rows = cedaRecords({ output: { data: [{ census_state_id: 9, census_district_id: 123 }] } }, 'geographies');
+  assert.deepEqual(rows[0], { census_state_id: 9, census_district_id: 123 });
+});
+
 test('CEDA client uses Bearer auth and posts JSON', async () => {
   let seen;
   const client = createCedaClient({

@@ -71,9 +71,14 @@ async function sync() {
   ]);
   const commodity = cedaRecords(commoditiesPayload, 'commodities').find((item) => Number(item.id ?? item.commodity_id) === commodityId);
   const cropLabel = process.env.CEDA_CROP_NAME || commodity?.name || commodity?.commodity_name || cropName;
+  // CEDA's live endpoint returns one flat row per district (census_state_* /
+  // census_district_*), despite the Swagger schema documenting nested states.
   const geographies = cedaRecords(geographiesPayload, 'geographies');
-  const state = geographies.find((item) => Number(item.state_id) === stateId);
-  const districtNames = new Map((state?.districts ?? []).map((item) => [Number(item.district_id), item.district_name]));
+  const state = geographies.find((item) => Number(item.census_state_id ?? item.state_id) === stateId);
+  const stateName = state?.census_state_name ?? state?.state_name ?? `State ${stateId}`;
+  const districtNames = new Map(geographies
+    .filter((item) => Number(item.census_state_id ?? item.state_id) === stateId)
+    .map((item) => [Number(item.census_district_id ?? item.district_id), item.census_district_name ?? item.district_name]));
   const markets = new Map(marketPayloads.flatMap((payload) => cedaRecords(payload, 'data')).map((item) => [Number(item.market_id), item.market_name]));
   const rows = cedaRecords(pricesPayload, 'data');
   if (!rows.length) throw new Error('CEDA returned no price records for the selected filters');
@@ -92,7 +97,7 @@ async function sync() {
       const modal = Number(row.modal_price);
       if (!Number.isInteger(districtId) || !Number.isInteger(marketId) || !Number.isFinite(modal)) continue;
       const regionCode = `IN-CEDA-S${stateId}-D${districtId}`;
-      const regionName = `${state?.state_name || `State ${stateId}`} — ${districtNames.get(districtId) || `District ${districtId}`}`;
+      const regionName = `${stateName} — ${districtNames.get(districtId) || `District ${districtId}`}`;
       const marketCode = `ceda-${marketId}`;
       await db.query(
         `INSERT INTO app.regions (code, country_code, name) VALUES ($1, 'IN', $2)
