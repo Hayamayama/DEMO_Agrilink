@@ -24,6 +24,7 @@ export const marketApi = {
   deals: () => getApi('/api/market/deals'),
   deal: (dealId) => getApi(`/api/market/deals/${id(dealId)}`),
   dealAction: (dealId, action, body = {}) => postApi(`/api/market/deals/${id(dealId)}/${action}`, body, T),
+  sync: (since) => getApi(`/api/market/sync${qs({ since })}`, { timeout: 6000 }),
   report: (targetType, targetId, reason) => postApi('/api/market/reports', { targetType, targetId, reason }),
   block: (userId) => postApi('/api/market/blocks', { userId }),
 };

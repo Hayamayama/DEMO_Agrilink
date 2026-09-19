@@ -15,3 +15,7 @@
   .market-card { padding: 2px var(--pad); }
   .market-code .big { font-size: 16px; letter-spacing: 2px; }
 }
+
+/* Live-update banner: sits between the content and the soft keys so it never covers what is being read. */
+#toast { flex: 0 0 auto; padding: 3px var(--pad); background: var(--forum-solved); color: #04210f; font-size: var(--forum-fs-meta); font-weight: 800; }
+#toast[hidden] { display: none; }

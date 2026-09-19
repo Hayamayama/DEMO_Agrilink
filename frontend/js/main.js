@@ -21,6 +21,7 @@ import userProfile from './screens/userProfile.js';
 import createReply from './screens/createReply.js';
 import { pickerScreens } from './screens/forumPicker.js';
 import { MyPosts, SavedPosts } from './screens/forumCollections.js';
+import { startMarketSync } from './market/marketSync.js';
 import { MarketForm, MarketNumber, MarketText } from './market/marketForm.js';
 import { MarketHome, MarketFeed, MarketFilter, MarketDetail } from './market/marketScreens.js';
 import { MarketOffers, MarketOffer, MarketDeals, MarketDeal, MarketReason } from './market/marketTrades.js';
@@ -55,3 +56,4 @@ try {
   // A local price-only demo may intentionally run without PostgreSQL/auth.
   router.start('AuthWelcome');
 }
+startMarketSync({ router });

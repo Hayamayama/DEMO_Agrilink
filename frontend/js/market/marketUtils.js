@@ -72,6 +72,7 @@ export function load(ctx, fetcher) {
 }
 export function stateView(ctx, fetcher) {
   const p = ctx.params;
+  p.fetcher = fetcher;
   if (!p.state) load(ctx, fetcher);
   if (p.state.status === 'loading') return loadingView();
   if (p.state.status === 'error') {
@@ -79,6 +80,19 @@ export function stateView(ctx, fetcher) {
     return errorView({ ...p.state.error, code: p.state.error.code, message: marketError(p.state.error) });
   }
   return null;
+}
+/** Silent refetch for the open screen (used when the sync poller sees news): keeps focus, shows no spinner. */
+export async function refreshScreen(ctx) {
+  const p = ctx.params;
+  if (!p?.fetcher || p.state?.status !== 'ready' || p.busy || p.pending) return;
+  const root = ctx.root;
+  try {
+    const data = await p.fetcher();
+    if (ctx.root !== root || p.busy) return;
+    p.focusIndex = ctx.focus?.index ?? p.focusIndex;
+    p.state = { status: 'ready', data };
+    ctx.rerender();
+  } catch { /* the next tick or a manual retry will recover */ }
 }
 export const isRetry = (row) => row?.dataset?.act === 'retry';
 

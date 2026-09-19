@@ -340,3 +340,50 @@ test('expired listings drop out of the feed and refuse offers; expireStale sweep
     assert.equal((await t.market.service.expireStale()).listings, 1);
   } finally { await t.close(); }
 });
+
+test('sync replays my offer/deal events and regional posts, never someone else\'s', async () => {
+  const t = await start();
+  try {
+    const seller = await t.member('Seller');
+    const buyer = await t.member('Buyer');
+    const far = await t.member('Far', t.gaya);
+    const start0 = (await buyer.get('/api/market/sync')).body;
+    assert.deepEqual(start0.events, []);
+    assert.equal(typeof start0.cursor, 'number');
+    const since = (c, n) => c.get(`/api/market/sync?since=${n}`).then((r) => r.body);
+
+    const l = (await seller.post('/api/market/listings', listingBody())).body.id;
+    let b = await since(buyer, start0.cursor);
+    assert.deepEqual(b.events.map((e) => [e.kind, e.itemId]), [['listing.created', l]]); // same region
+    assert.equal((await since(seller, start0.cursor)).events.length, 0); // not the poster
+    assert.equal((await since(far, start0.cursor)).events.length, 0); // other district
+
+    const o = (await buyer.post(`/api/market/listings/${l}/offers`, offerBody())).body.id;
+    const s1 = await since(seller, start0.cursor);
+    assert.deepEqual(s1.events.map((e) => e.kind), ['offer.created']);
+    assert.equal(s1.events[0].offerId, o);
+    assert.equal((await since(far, start0.cursor)).events.length, 0);
+    assert.ok(!JSON.stringify(s1).includes('ownerId'));
+
+    // cursor advances: nothing new until the next action
+    assert.equal((await since(seller, s1.cursor)).events.length, 0);
+    const a = await seller.post(`/api/market/offers/${o}/accept`);
+    const b2 = await since(buyer, b.cursor);
+    assert.deepEqual(b2.events.map((e) => e.kind), ['deal.awaiting_confirmation']);
+    assert.equal(b2.events[0].dealId, a.body.dealId);
+
+    // replay from the start returns the history; junk cursors are rejected
+    assert.ok((await since(buyer, 0)).events.length >= 2);
+    assert.equal((await buyer.get('/api/market/sync?since=abc')).status, 400);
+
+    // blocked users' posts do not notify
+    await buyer.post('/api/market/blocks', { userId: seller.id });
+    const mark = (await buyer.get('/api/market/sync')).body.cursor;
+    await seller.post('/api/market/listings', listingBody());
+    assert.equal((await since(buyer, mark)).events.length, 0);
+    // housekeeping keeps recent events
+    await t.market.service.expireStale();
+    // the block also hides the seller's earlier listing event; the deal event (addressed to me) remains
+    assert.deepEqual((await since(buyer, 0)).events.map((e) => e.kind), ['deal.awaiting_confirmation']);
+  } finally { await t.close(); }
+});

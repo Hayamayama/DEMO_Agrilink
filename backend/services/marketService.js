@@ -272,8 +272,9 @@ export function createMarketService({ pool, limiter, env = process.env, config =
             futureDay(body.neededBy, 'neededBy'), fulfillment, ...place]);
       }
       await event(c, kind === 'listing' ? 'listing' : 'buy_request', id, user.id, 'created', { quantity, unit });
+      const evKind = kind === 'listing' ? 'listing.created' : 'buy_request.created';
       await c.query('INSERT INTO app.outbox_events (topic, region_id, payload) VALUES ($1,$2,$3)',
-        [kind === 'listing' ? 'market.listing.created' : 'market.buy_request.created', me.region_id, JSON.stringify({ id })]);
+        [`market.${evKind}`, me.region_id, JSON.stringify({ kind: evKind, id, ownerId: user.id })]);
       return { id, duplicate: false };
     });
   }
@@ -738,6 +739,33 @@ export function createMarketService({ pool, limiter, env = process.env, config =
     return {};
   }
 
+  // Outbox replay: a member's own offer/deal events plus new posts in their region (never their own, never
+  // from blocked users). No cursor -> "start from now". The cursor is the last outbox id the client has seen.
+  async function sync(user, since) {
+    const me = await origin(user);
+    if (since == null || since === '') {
+      const top = (await q('SELECT COALESCE(MAX(id), 0)::text AS id FROM app.outbox_events')).rows[0].id;
+      return { cursor: Number(top), events: [] };
+    }
+    const from = number(since, 'since', { min: 0, max: 9e15, decimals: 0 });
+    const rows = (await q(
+      `SELECT o.id::text AS id, o.topic, o.payload, o.created_at FROM app.outbox_events o
+       WHERE o.id > $1 AND o.topic LIKE 'market.%'
+         AND (o.recipient_id = $2
+              OR (o.recipient_id IS NULL AND o.region_id = $3 AND COALESCE(o.payload->>'ownerId', '') <> $2::text
+                  AND NOT EXISTS (SELECT 1 FROM app.market_blocks b
+                                  WHERE (b.blocker_id = $2 AND b.blocked_id::text = o.payload->>'ownerId')
+                                     OR (b.blocked_id = $2 AND b.blocker_id::text = o.payload->>'ownerId'))))
+       ORDER BY o.id LIMIT 50`, [from, user.id, me.region_id])).rows;
+    return {
+      cursor: rows.length ? Number(rows[rows.length - 1].id) : from,
+      events: rows.map((r) => ({
+        id: Number(r.id), kind: r.payload.kind || r.topic.slice(7), at: iso(r.created_at),
+        offerId: r.payload.offerId || null, dealId: r.payload.dealId || null, itemId: r.payload.id || null,
+      })),
+    };
+  }
+
   // Idempotent housekeeping; safe to run on a timer. Never touches posts that have live deals.
   async function expireStale() {
     const l = await q(`UPDATE app.market_listings SET status='expired', updated_at=now() WHERE status IN ('open','partially_reserved') AND expires_at <= now()
@@ -745,6 +773,7 @@ export function createMarketService({ pool, limiter, env = process.env, config =
     const r = await q(`UPDATE app.market_buy_requests SET status='expired', updated_at=now() WHERE status IN ('open','partially_reserved') AND expires_at <= now()
       AND NOT EXISTS (SELECT 1 FROM app.market_deals d WHERE d.buy_request_id = market_buy_requests.id AND d.status = ANY($1)) RETURNING id`, [LIVE_DEAL]);
     const o = await q(`UPDATE app.market_offers SET status='expired', updated_at=now() WHERE status IN ('open','countered') AND expires_at <= now() RETURNING id`);
+    await q(`DELETE FROM app.outbox_events WHERE topic LIKE 'market.%' AND created_at < now() - interval '2 days'`);
     return { listings: l.rows.length, requests: r.rows.length, offers: o.rows.length };
   }
 
@@ -756,6 +785,6 @@ export function createMarketService({ pool, limiter, env = process.env, config =
     offerOnListing: (u, id, b) => createOffer(u, 'listing', id, b), offerOnRequest: (u, id, b) => createOffer(u, 'request', id, b),
     listOffers, getOffer, counter, accept, decline, withdraw,
     listDeals, getDeal, confirm, schedule, verifyPickup, received, paymentStatus, cancel, rate,
-    report, block, expireStale, pickupCode,
+    report, block, sync, expireStale, pickupCode,
   };
 }

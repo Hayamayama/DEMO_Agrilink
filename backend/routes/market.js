@@ -71,6 +71,8 @@ export function createMarketRouter({ pool, auth, env = process.env, config }) {
   router.post('/deals/:id/cancel', json, send((req) => market.cancel(req.user, req.params.id, req.body?.reason)));
   router.post('/deals/:id/rating', json, send((req) => market.rate(req.user, req.params.id, req.body?.stars)));
 
+  router.get('/sync', send((req) => market.sync(req.user, req.query.since)));
+
   router.post('/reports', json, send((req) => market.report(req.user, req.body || {}), 201));
   router.post('/blocks', json, send((req) => market.block(req.user, req.body || {}), 201));
 

@@ -64,6 +64,8 @@ export function createRouter({ screens, els, ctxExtra = {} }) {
       stack.push({ name });
       show();
     },
+    /** Lets the current screen refetch quietly (e.g. after the sync poller saw news). */
+    refresh() { screens[stack[stack.length - 1]?.name]?.onRefresh?.(ctx); },
     get depth() { return stack.length; },
   };
   ctx.router = router;

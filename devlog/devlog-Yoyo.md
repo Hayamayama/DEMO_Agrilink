@@ -417,3 +417,17 @@
   - 目前沒有即時推播：對方操作後要重新進入畫面才會看到（每次進入都會重抓）。首頁「My Offers (n new)」徽章也只在進入首頁時更新。
   - 需要先登入；還沒有 Cloud Phone 實機鍵碼驗證（沿用既有 keymap）。
   - 發布 listing 時作物清單來自 `/api/auth/options`，主機的 `app.crops` 需要有資料，否則作物選單是空的。
+
+## 202609191633 · Local Market 即時通知（sync 輪詢）
+
+- **想解決的問題**：對方操作（新 listing、出價、還價、接受、排定取貨…）後，要重新進畫面才看得到；PRD 要求兩機即時同步。
+- **做法與取捨**：沒有加 WebSocket（`ws` 不在依賴裡，且 Cloud Phone 對 WS 的支援尚未實機驗證），改用 PRD 明列的 3–5 秒輪詢 fallback，資料來自既有的 `app.outbox_events`（產生事件的 transaction 已經會寫入）。之後若要換成 WS，事件格式與 cursor 可以直接沿用。
+- **做了什麼改動**
+  - 後端：`GET /api/market/sync?since=<id>`（`marketService.sync`）。沒帶 `since` = 「從現在開始」，只回 cursor；帶了就回該會員的 offer/deal 事件，加上同地區新的 listing / buy request（不含自己發的，也不含有封鎖關係的人）。一次最多 50 筆，回應不帶任何座標或 ownerId。地區事件 payload 加上 `kind`、`ownerId`。`expireStale()` 順便清掉 2 天前的 market outbox 事件。
+  - 前端：`js/market/marketSync.js` 每 4 秒輪詢（頁面隱藏時暫停，失敗會退避，伺服器回 503/404 就停止），畫面底部（softkey 上方）顯示綠色橫幅，5 秒後消失；`router.refresh()` 讓目前的 Market 畫面靜默重抓、保留焦點位置（首頁「My Offers (n new)」徽章也會更新）。
+  - 測試：`tests/market.test.js` 新增 sync 測試（只收到自己的事件、地區事件不含發文者與封鎖對象、cursor 前進、重播、非法 cursor 回 400），共 12 項；全套通過。
+- **驗證結果**：瀏覽器 240×320 實測：別人發布 listing 後列表自動出現新項目並跳出「New produce for sale nearby」；對方還價後「Offers I sent」清單自動更新，橫幅顯示「Counter offer received」，切到 Inbox 看到「Your turn」。
+- **給組員的注意事項**
+  - 延遲最長約 4 秒（輪詢間隔）；多頁列表（按過「More…」）在刷新時會回到第一頁。
+  - 每個登入中的畫面每 4 秒一個很小的請求；`/api/market` 每 IP 每分鐘上限 240 次，同一個 NAT 後面很多人時要留意。
+  - 新登入的會員從「現在」開始收事件，不會補發登入前的事件（首頁徽章與「My Offers」仍看得到待回覆項目）。

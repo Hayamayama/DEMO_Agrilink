@@ -5,7 +5,7 @@ import { marketApi } from './marketApi.js';
 import { ensureOptions, listingForm, requestForm, offerForm } from './marketForms.js';
 import {
   GRADE_LABEL, FULFILL_LABEL, PRICING_LABEL, confirm, dateLabel, fmtNum, handleAuth, isRetry, line, load, marketError, money, perUnit,
-  relTime, timeLeft, row, runPending, stateView,
+  relTime, timeLeft, row, runPending, stateView, refreshScreen,
 } from './marketUtils.js';
 
 // Filters live for the session only. Location is always the member's profile region, never IP.
@@ -29,6 +29,15 @@ async function openForm(ctx, form) {
 }
 const afterCreate = (kind) => (ctx, result) => ctx.router.replace('MarketDetail', { kind, id: result.id, notice: 'Posted.' });
 
+// Badge: offers waiting for the member's answer.
+function badge(ctx) {
+  marketApi.offers('incoming').then((r) => {
+    const n = r.items.filter((i) => i.awaitingMyResponse).length;
+    const target = ctx.root?.querySelectorAll('.item')[4]?.querySelector('.forum-choice-label');
+    if (target) target.textContent = n ? `My Offers (${n} new)` : 'My Offers';
+  }).catch(() => {});
+}
+
 export const MarketHome = {
   name: 'MarketHome',
   title: 'Local Market',
@@ -42,14 +51,8 @@ export const MarketHome = {
     if (ctx.params?.notice) wrap.appendChild(el('forum-error-text', ctx.params.notice));
     return wrap;
   },
-  onShow(ctx) {
-    // Badge: offers waiting for the member's answer.
-    marketApi.offers('incoming').then((r) => {
-      const n = r.items.filter((i) => i.awaitingMyResponse).length;
-      const target = ctx.root?.querySelectorAll('.item')[4]?.querySelector('.forum-choice-label');
-      if (n && target) target.textContent = `My Offers (${n} new)`;
-    }).catch(() => {});
-  },
+  onShow(ctx) { badge(ctx); },
+  onRefresh(ctx) { badge(ctx); },
   onEnter(_r, ctx, i) { HOME[i]?.[1](ctx); },
 };
 
@@ -98,6 +101,7 @@ export const MarketFeed = {
   },
   initialFocus: (ctx) => ctx.params.focusIndex ?? 0,
   onHide(ctx) { ctx.params.state = null; },
+  onRefresh: refreshScreen,
   onEnter(cur, ctx, i) { ctx.params.focusIndex = i; open(ctx, cur); },
 };
 function open(ctx, cur) {
@@ -197,6 +201,7 @@ export const MarketDetail = {
   },
   initialFocus: (ctx) => ctx.params.focusIndex ?? 0,
   onShow(ctx) { runPending(ctx); },
+  onRefresh: refreshScreen,
   onHide(ctx) { ctx.params.state = null; },
   onEnter(cur, ctx, i) {
     if (isRetry(cur)) { ctx.params.state = null; return ctx.rerender(); }

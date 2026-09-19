@@ -4,7 +4,7 @@ import { marketApi } from './marketApi.js';
 import { counterForm, scheduleForm } from './marketForms.js';
 import {
   DEAL_STATUS, OFFER_STATUS, PAYMENT_LABEL, confirm, dateLabel, fmtNum, handleAuth, isRetry, line, marketError, money, perUnit, relTime, timeLeft, row,
-  runPending, stateView, windowLabel,
+  runPending, stateView, windowLabel, refreshScreen,
 } from './marketUtils.js';
 
 // Shared by offer and deal detail: run an API call with a busy state, then refresh.
@@ -39,6 +39,7 @@ function listScreen({ name, title, fetch, item, emptyText, softLeft }) {
     },
     initialFocus: (ctx) => ctx.params.focusIndex ?? 0,
     onHide(ctx) { ctx.params.state = null; },
+    onRefresh: refreshScreen,
     onEnter(cur, ctx, i) { go(ctx, cur, i); },
   };
   function go(ctx, cur, i) {
@@ -108,6 +109,7 @@ export const MarketOffer = {
   },
   initialFocus: (ctx) => ctx.params.focusIndex ?? 0,
   onShow(ctx) { runPending(ctx); },
+  onRefresh: refreshScreen,
   onHide(ctx) { ctx.params.state = null; },
   onEnter(cur, ctx, i) {
     if (isRetry(cur)) { ctx.params.state = null; return ctx.rerender(); }
@@ -190,6 +192,7 @@ export const MarketDeal = {
   },
   initialFocus: (ctx) => ctx.params.focusIndex ?? 0,
   onShow(ctx) { runPending(ctx); },
+  onRefresh: refreshScreen,
   onHide(ctx) { ctx.params.state = null; },
   onEnter(cur, ctx, i) {
     if (isRetry(cur)) { ctx.params.state = null; return ctx.rerender(); }
