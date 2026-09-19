@@ -1,6 +1,6 @@
 import { el, isCompact } from '../dom.js';
 import { composer, ask, history, track } from '../askAI.js';
-import { capabilities, pickPhoto, loadDemoSample, DEMO_SAMPLES, VoiceRecorder, MAX_SECONDS } from '../media.js';
+import { capabilities, loadFeatures, pickPhoto, loadDemoSample, DEMO_SAMPLES, VoiceRecorder, MAX_SECONDS, PERMISSION_WAIT_MS } from '../media.js';
 
 // Options, Photo, Voice and History screens. Options *replaces* itself with the
 // chosen screen so the back stack stays Home → (Input) → Photo/Voice, never
@@ -36,6 +36,10 @@ export const AskAIMedia = {
   title: 'Options',
   numericSelect: true,
   softLeft: { label: '', handler() {} },
+  onShow(ctx) {
+    if (capabilities().platform.loaded) return;
+    loadFeatures().then(() => { if (capabilities().platform.loaded) { const i = ctx.focus.index; ctx.rerender(); ctx.focus.set(i); } });
+  },
   render() {
     const list = el('ai-screen list ai-options');
     optionItems().forEach((it, i) => {
@@ -215,7 +219,7 @@ async function toggleRecord(ctx) {
   const mine = recorder;
   voice.state = 'starting';
   ctx.rerender(); // show "Allow the microphone…" while the browser prompt is open
-  // An ignored permission prompt never settles; give up after 10s instead of
+  // An ignored permission prompt never settles; give up eventually instead of
   // sitting on 00s forever.
   const giveUp = setTimeout(() => {
     if (recorder !== mine || voice.state !== 'starting') return;
@@ -225,7 +229,7 @@ async function toggleRecord(ctx) {
     voice.error = `No microphone permission. Press Enter to retry.${DEBUG ? ' [no response]' : ''}`;
     console.warn('voice: getUserMedia never settled (no prompt or no mic on this runtime)');
     ctx.rerender();
-  }, 10000);
+  }, PERMISSION_WAIT_MS);
   try {
     await mine.start();
     if (recorder !== mine || voice.state !== 'starting') return; // cancelled meanwhile
@@ -270,7 +274,7 @@ export const AskAIVoice = {
 
     const hint = {
       idle: 'Press Enter and ask your question.',
-      starting: 'Allow the microphone when your browser asks.',
+      starting: 'Allow the microphone when the phone asks.',
       recording: 'Listening… Enter to stop.',
       done: '1 Play · Enter Send · Left Redo',
     }[voice.state] || '';

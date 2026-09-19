@@ -338,3 +338,11 @@
 - **發現的問題**：組員在實機（Cloud Phone / itel）按 Enter 後畫面停在 `00s / 30s`。代表該環境有 `getUserMedia` 與 `MediaRecorder`（Voice 選項未變灰），但呼叫後既不成功也不報錯，多半是沒有實際麥克風或授權畫面。
 - **做了什麼改動**：帶 `?debug=1` 時，錯誤訊息後面會附上原始錯誤名稱（如 `[NotFoundError]`、`[NotAllowedError]`），10 秒無回應則顯示 `[no response]`；同時寫入 console。本機用「拒絕」與「永不回應」兩種假麥克風驗證。
 - **給組員的注意事項**：部署後請在實機開 `https://203-116-30-130.sslip.io/?debug=1` 再試一次 Voice，把畫面上括號內的字記下來（這就是 spec 要的「實機實際能力」紀錄）。若是 `[no response]` 或 `NotFoundError`，該環境不支援語音，demo 請改用文字/照片。
+
+## 202609191502 · 實機語音：平台權限提示 + 改用 Cloud Phone hasFeature
+
+- **發現的問題**：實機（itel NEO R60+）進 Voice 按 Enter 後出現「需要麥克風存取權」，組員不知道如何同意。該句不是本 app 顯示的（repo 內無此文字），是 Cloud Phone 客戶端的原生權限提示。官方文件（developer.cloudfone.com）只說：模擬器沒有麥克風/相機；實機才有；`getUserMedia` 可能丟 `NotAllowedError` / `NotFoundError`。**文件沒有說明使用者要按哪個鍵同意**，需向主辦/CloudMosa 確認。
+- **做了什麼改動**
+  - 新增 Cloud Phone 專用的功能偵測：`navigator.hasFeature('AudioCapture')`、`('ImageUpload')`（非 Cloud Phone 環境無此函式，行為不變）。回報不支援時 Voice/Photo 會變灰並顯示「Not available on this device」。本機用假的 hasFeature 驗證。
+  - 等待權限提示的逾時由 10 秒放寬為 30 秒（feature phone 找到並確認提示需要時間）；提示文字改為「Allow the microphone when the phone asks.」。
+- **給組員的注意事項**：實機請用 `?debug=1` 開啟，逾時或失敗時畫面會附上錯誤名稱，請記錄下來作為「實機實際能力」。若實機一直無法授權，demo 請改走文字/照片。

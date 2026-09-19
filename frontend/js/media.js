@@ -12,17 +12,38 @@ export const DEMO_SAMPLES = [
   { id: 'leaf2', label: 'Spotted leaf', src: 'img/sample-leaf-2.jpg' },
 ];
 
+// Cloud Phone exposes its own async feature detection (navigator.hasFeature); the
+// standard APIs can exist while the handset client still has no microphone/picker.
+// Filled by loadFeatures(); null = unknown, so browsers without hasFeature are unaffected.
+const platform = { audio: null, image: null, loaded: false };
+
+export async function loadFeatures() {
+  if (platform.loaded || typeof navigator.hasFeature !== 'function') return platform;
+  const ask = async (name) => {
+    try { return Boolean(await navigator.hasFeature(name)); } catch { return null; }
+  };
+  platform.audio = await ask('AudioCapture');
+  platform.image = await ask('ImageUpload');
+  platform.loaded = true;
+  return platform;
+}
+
 export function capabilities() {
   const input = document.createElement('input');
   input.type = 'file';
   return {
     // A file input exists almost everywhere; `capture` only hints at the camera.
-    photo: input.type === 'file',
+    photo: input.type === 'file' && platform.image !== false,
     camera: 'capture' in input,
-    voice: Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder),
+    voice: Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder) && platform.audio !== false,
     secure: window.isSecureContext !== false,
+    platform: { ...platform },
   };
 }
+
+// How long to wait for a permission prompt before giving up. A feature-phone
+// prompt can take a while to find and confirm, so this is deliberately generous.
+export const PERMISSION_WAIT_MS = 30000;
 
 /**
  * Opens the picker and returns a compressed JPEG, or null if the user cancelled.

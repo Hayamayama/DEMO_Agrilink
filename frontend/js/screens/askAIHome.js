@@ -1,6 +1,6 @@
 import { el, isCompact } from '../dom.js';
 import { ASK_AI_PRESETS, composer, ask, loadCapabilities, serverCapabilities, track } from '../askAI.js';
-import { capabilities } from '../media.js';
+import { capabilities, loadFeatures } from '../media.js';
 
 // Focus order: 0 = composer, 1..n = presets.
 const presetsFor = () => (isCompact() ? ASK_AI_PRESETS.slice(0, 3) : ASK_AI_PRESETS);
@@ -67,6 +67,7 @@ export default {
       ctx.focus.set(Math.min(i, ctx.focus.items.length - 1));
     };
     if (!serverCapabilities.loaded) loadCapabilities().then(keepFocus);
+    if (typeof navigator.hasFeature === 'function' && !capabilities().platform.loaded) loadFeatures().then(keepFocus); // Cloud Phone
     onResize = keepFocus;
     addEventListener('resize', onResize);
   },
