@@ -5,14 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <title>KeyTest</title>
 <style>
-  html,body{margin:0;background:#000;color:#0f0;font:11px/1.25 monospace;overflow:hidden;word-break:break-all}
-  #info{color:#ff0;padding:2px;border-bottom:1px solid #333}
-  #log div{padding:0 2px}
-  #log div:first-child{background:#0f0;color:#000}
+  html,body{margin:0;background:#000;color:#0f0;font:600 16px/1.2 monospace;overflow:hidden;word-break:break-all}
+  #last{background:#0f0;color:#000;font-size:22px;padding:4px;min-height:56px}
+  #info{color:#ff0;padding:3px;border-bottom:1px solid #444;font-size:14px}
+  #log div{padding:1px 3px;font-size:13px}
   .ev{color:#0ff}
 </style>
 </head>
 <body>
+<div id="last">ready</div>
 <div id="info"></div>
 <div id="log"></div>
 <script>
@@ -23,18 +24,19 @@ function add(text, cls) {
   d.textContent = (++n) + ' ' + text;
   if (cls) d.className = cls;
   log.insertBefore(d, log.firstChild);
-  while (log.childNodes.length > 9) log.removeChild(log.lastChild);
+  while (log.childNodes.length > 6) log.removeChild(log.lastChild);
 }
 function info() {
-  var emoji = '☀️ ⛅ 🌧️';
-  document.getElementById('info').textContent =
-    'view ' + innerWidth + 'x' + innerHeight + ' dpr ' + devicePixelRatio +
-    ' hist ' + history.length + ' | ' + emoji + ' हिन्दी বাংলা | ' + navigator.userAgent.slice(0, 70);
+  document.getElementById('info').innerHTML =
+    'view ' + innerWidth + 'x' + innerHeight + ' dpr ' + devicePixelRatio + ' hist ' + history.length +
+    '<br>\u2600\uFE0F \u26C5 \uD83C\uDF27\uFE0F \u0939\u093F\u0928\u094D\u0926\u0940 \u09AC\u09BE\u0982\u09B2\u09BE';
 }
 info();
 addEventListener('resize', info);
 addEventListener('keydown', function (e) {
-  add('key="' + e.key + '" code="' + e.code + '" kc=' + e.keyCode + ' shift=' + e.shiftKey);
+  var t = 'key="' + e.key + '" code="' + e.code + '" kc=' + e.keyCode + ' shift=' + e.shiftKey;
+  document.getElementById('last').textContent = t;
+  add(t);
   e.preventDefault();
 });
 addEventListener('keyup', function (e) { add('up ' + e.key, 'ev'); });
