@@ -1,4 +1,4 @@
-// Stable error envelope for Farmer Circle: { ok:false, error:{ code, message, field, retryable } }.
+// Stable error envelope for Farmer Circle and Local Market: { ok:false, error:{ code, message, field, retryable } }.
 // The UI branches on `code`, never on the English message.
 const STATUS = {
   VALIDATION_ERROR: 400,
@@ -12,6 +12,10 @@ const STATUS = {
   ALREADY_REPORTED: 409,
   RATE_LIMITED: 429,
   DUPLICATE_REQUEST: 409,
+  INVALID_STATE: 409,
+  CONFLICT: 409,
+  QUANTITY_UNAVAILABLE: 409,
+  PICKUP_LOCKED: 429,
   UPLOAD_TOO_LARGE: 413,
   UNSUPPORTED_MEDIA: 415,
   INTERNAL_ERROR: 500,
@@ -36,7 +40,7 @@ export const asyncHandler = (fn) => (req, res, next) => {
 
 // Only claims errors for our own routes; other routers keep their own handling.
 export function forumErrorHandler(err, req, res, next) {
-  if (!/^\/api\/forum(\/|$)/.test(req.path)) return next(err);
+  if (!/^\/api\/(forum|market)(\/|$)/.test(req.path)) return next(err);
   if (res.headersSent) return next(err);
   let e = err;
   if (!(e instanceof AppError)) {

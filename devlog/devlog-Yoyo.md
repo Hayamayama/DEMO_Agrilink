@@ -385,3 +385,19 @@
 - **做了什麼**：先用 `pg_dump -n app` 備份到主機 `/home/ubuntu/agrilink-backup-202609191607.sql`（29 張表），再以 `postgres` 套用 006（單一 transaction，無錯誤），並手動在 `app.schema_migrations` 記入 `006_market_exchange.sql`。
 - **驗證結果**：`market_*` 新表 10 張；`agrilink_app` 對 `market_deals` 有 UPDATE、對 `market_events` 沒有 UPDATE（append-only 權限生效）。
 - **給組員的注意事項**：主機 `schema_migrations` 的 001–003 記成沒有 `.sql` 的名字，004 起才有；直接跑 `npm run db:migrate` 會把 001–003 當成未套用而重跑並失敗，之前請先把那三筆改成完整檔名。目前仍只有 schema，沒有 API/前端。
+
+## 202609191616 · Local Market 後端 service + API（/api/market）
+
+- **想解決的問題**：006 只有 schema，需要實作 PRD 的 listing → offer → deal 流程，並把「誰能做什麼、狀態怎麼轉」放在 transaction 裡。
+- **做了什麼改動**
+  - `services/marketService.js`、`routes/market.js`：listings / buy-requests 的瀏覽與發布、offer（counter / accept / decline / withdraw）、deal（confirm / schedule / verify-pickup / received / payment-status / cancel / rating）、report、block。`middleware/errors.js` 新增 `INVALID_STATE`、`CONFLICT`、`QUANTITY_UNAVAILABLE`、`PICKUP_LOCKED`，錯誤處理範圍擴到 `/api/market`。
+  - `server.js`：偵測到 `app.market_listings` 才掛載 `/api/market`，沒套 006 時回 503，不影響其他功能。
+  - 測試 `tests/market.test.js`（11 項，走完整流程，含超賣、隱私、封鎖、過期、代碼鎖定），全套 120 項通過。
+- **行為與 PRD 的差異／決定（請組員知悉）**
+  - 「誰能 accept」：PRD 寫只有 listing 擁有者；但 counter 之後要由買方接受賣方的還價，所以規則改成「**不是目前這版提案的提出者**」才能 accept／counter／decline，提案者本人只能 withdraw。
+  - 所有 `/api/market` 端點都要登入（forum 允許訪客瀏覽）；地區來自使用者 profile，不用 IP。
+  - accept 會在同一個 transaction 鎖 offer 與 listing，並把數量記入 `reserved_quantity`；cancel 釋放、completed 轉為 `sold_quantity`。
+  - 完成條件：買方按 received **且**賣方付款狀態為 received／not_applicable；付款狀態 pending 不會完成。
+  - 取貨代碼由 `HMAC(MARKET_CODE_SECRET 或 AUTH_LOOKUP_SECRET, deal_id)` 算出，只有買方看得到；賣方連錯 5 次鎖 15 分鐘。
+  - 定價為 fixed 的 listing，offer 單價必須等於標價。
+- **給組員的注意事項**：主機 006 已套用，部署後 `/api/market` 才會生效；目前沒有前端畫面。offer 過期清理用 `expireStale()`，每 5 分鐘由 router 內的 timer 執行。

@@ -13,6 +13,7 @@ import { createAuthService } from './services/authService.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { createForumRouter } from './routes/forum.js';
+import { createMarketRouter } from './routes/market.js';
 import { ensureForumReference } from './db/forumReference.js';
 import { seedDemo } from './db/forumSeed.js';
 import { forumErrorHandler } from './middleware/errors.js';
@@ -70,6 +71,15 @@ if (pool) {
     } catch (err) {
       console.warn(`forum: disabled (${err.message}) - apply migration 005 with npm run db:migrate`);
       app.use('/api/forum', forumUnavailable);
+    }
+    // Local Market needs migration 006; a missing table only disables this feature.
+    try {
+      await pool.query('SELECT 1 FROM app.market_listings LIMIT 0');
+      app.use('/api/market', createMarketRouter({ pool, auth }).router);
+      console.log('market: Local Market enabled');
+    } catch (err) {
+      console.warn(`market: disabled (${err.message}) - apply migration 006 with npm run db:migrate`);
+      app.use('/api/market', (_req, res) => res.status(503).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Local Market is not available right now.', field: null, retryable: true } }));
     }
   } catch (err) {
     // Prices and offline AI are still useful on a local demo, but identity must
