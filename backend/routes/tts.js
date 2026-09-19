@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { synthesize as defaultSynthesize, TtsError, TTS_MAX_CHARS, isConfigured } from '../services/ttsService.js';
 import { memberOnly, quotaLimits } from '../middleware/memberAccess.js';
+import { errorBody } from '../middleware/errors.js';
 
 const PER_MINUTE = Number(process.env.TTS_RATE_LIMIT_PER_MINUTE) || 30;
 const PER_DAY    = Number(process.env.TTS_RATE_LIMIT_PER_DAY)    || 500;
@@ -33,18 +34,14 @@ function sendError(res, err) {
   const code = err instanceof TtsError ? err.code : 'INTERNAL_ERROR';
   if (code === 'CANCELLED') return;
   if (!(err instanceof TtsError)) console.error('tts route error:', err.message);
-  
-  const payload = {
-    ok: false,
-    error: { 
-      code, 
-      message: err instanceof TtsError ? err.message : 'Something went wrong.', 
-      retryable: Boolean(err.retryable),
-      fallbackText: err.fallbackText || undefined
-    },
-  };
-  
-  res.status(STATUS[code] || 500).json(payload);
+  // The shared envelope (with the request id); fallbackText lets the handset read aloud itself
+  // when both cloud voices failed (TTS_FALLBACK_NATIVE).
+  res.status(STATUS[code] || 500).json(errorBody(res.req, {
+    code,
+    message: err instanceof TtsError ? err.message : 'Something went wrong.',
+    retryable: Boolean(err.retryable),
+    ...(err.fallbackText ? { fallbackText: err.fallbackText } : {}),
+  }));
 }
 
 export function ttsRouter({ auth, synthesize = defaultSynthesize } = {}) {
