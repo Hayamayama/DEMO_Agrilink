@@ -51,6 +51,23 @@ async function showMarkets() {
   });
   console.log(JSON.stringify(cedaRecords(payload, 'data'), null, 2));
 }
+function priceFilters() {
+  return {
+    commodity_id: int('CEDA_COMMODITY_ID'),
+    state_id: int('CEDA_STATE_ID'),
+    district_id: ints('CEDA_DISTRICT_IDS'),
+    market_id: ints('CEDA_MARKET_IDS'),
+    from_date: date(process.env.CEDA_FROM_DATE, dayOffset(14)),
+    to_date: date(process.env.CEDA_TO_DATE, dayOffset(0)),
+  };
+}
+async function showPrices() {
+  const filters = priceFilters();
+  const payload = await client.prices(filters);
+  // Keep this command read-only.  It is the first diagnostic step before
+  // importing, because the live API occasionally has gaps for a crop/market.
+  console.log(JSON.stringify({ filters, payload }, null, 2));
+}
 
 async function sync() {
   if (!pool) throw new Error('DATABASE_URL is not set');
@@ -58,15 +75,15 @@ async function sync() {
   const stateId = int('CEDA_STATE_ID');
   const districtIds = ints('CEDA_DISTRICT_IDS');
   const marketIds = ints('CEDA_MARKET_IDS');
-  const fromDate = date(process.env.CEDA_FROM_DATE, dayOffset(14));
-  const toDate = date(process.env.CEDA_TO_DATE, dayOffset(0));
+  const filters = priceFilters();
+  const { from_date: fromDate, to_date: toDate } = filters;
   const cropCode = code(process.env.CEDA_CROP_CODE || `ceda-${commodityId}`);
   const cropName = process.env.CEDA_CROP_NAME || `CEDA commodity ${commodityId}`;
 
   const [commoditiesPayload, geographiesPayload, pricesPayload, ...marketPayloads] = await Promise.all([
     client.commodities(),
     client.geographies({ commodityId }),
-    client.prices({ commodity_id: commodityId, state_id: stateId, district_id: districtIds, market_id: marketIds, from_date: fromDate, to_date: toDate }),
+    client.prices(filters),
     ...districtIds.map((districtId) => client.markets({ commodity_id: commodityId, state_id: stateId, district_id: districtId, indicator: 'price' })),
   ]);
   const commodity = cedaRecords(commoditiesPayload, 'commodities').find((item) => Number(item.id ?? item.commodity_id) === commodityId);
@@ -139,8 +156,9 @@ try {
   if (mode === 'catalog') await showCatalog();
   else if (mode === 'geographies') await showGeographies();
   else if (mode === 'markets') await showMarkets();
+  else if (mode === 'prices') await showPrices();
   else if (mode === 'sync') await sync();
-  else throw new Error('Usage: node db/syncCeda.js [catalog|geographies|markets|sync]');
+  else throw new Error('Usage: node db/syncCeda.js [catalog|geographies|markets|prices|sync]');
 } finally {
   if (pool) await pool.end();
 }
