@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
-import { synthesize, TtsError, TTS_MAX_CHARS, isConfigured } from '../services/ttsService.js';
+import { synthesize as defaultSynthesize, TtsError, TTS_MAX_CHARS, isConfigured } from '../services/ttsService.js';
 import { memberOnly, quotaLimits } from '../middleware/memberAccess.js';
 
 // Per signed-in member (Cloud Phone users share one egress IP), plus a server-wide daily cap:
@@ -43,7 +43,7 @@ function sendError(res, err) {
   });
 }
 
-export function ttsRouter({ auth } = {}) {
+export function ttsRouter({ auth, synthesize = defaultSynthesize } = {}) {
   const router = Router();
   const limits = quotaLimits({ perMinute: PER_MINUTE, perDay: PER_DAY, globalPerDay: GLOBAL_PER_DAY, payload: limitPayload });
 
