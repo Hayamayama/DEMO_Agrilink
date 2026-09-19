@@ -20,7 +20,8 @@ const HOME = [
   ['Buyer Requests', (ctx) => ctx.router.push('MarketFeed', { kind: 'request' })],
   ['Sell Produce', (ctx) => openForm(ctx, listingForm(afterCreate('listing')))],
   ['Post Buy Request', (ctx) => openForm(ctx, requestForm(afterCreate('request')))],
-  ['My Offers', (ctx) => ctx.router.push('MarketOffers', { role: 'incoming' })],
+  ['Offers to Answer', (ctx) => ctx.router.push('MarketOffers', { role: 'incoming' })],
+  ['Offers I Sent', (ctx) => ctx.router.push('MarketOffers', { role: 'outgoing' })],
   ['My Deals', (ctx) => ctx.router.push('MarketDeals', {})],
 ];
 async function openForm(ctx, form) {
@@ -34,7 +35,7 @@ function badge(ctx) {
   marketApi.offers('incoming').then((r) => {
     const n = r.items.filter((i) => i.awaitingMyResponse).length;
     const target = ctx.root?.querySelectorAll('.item')[4]?.querySelector('.forum-choice-label');
-    if (target) target.textContent = n ? `My Offers (${n} new)` : 'My Offers';
+    if (target) target.textContent = n ? `Offers to Answer (${n} new)` : 'Offers to Answer';
   }).catch(() => {});
 }
 

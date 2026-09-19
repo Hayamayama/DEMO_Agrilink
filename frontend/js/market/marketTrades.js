@@ -31,7 +31,7 @@ function listScreen({ name, title, fetch, item, emptyText, softLeft }) {
       const status = stateView(ctx, () => fetch(p));
       if (status) { wrap.appendChild(status); return wrap; }
       const items = p.state.data.items;
-      if (!items.length) { wrap.appendChild(emptyView(emptyText)); return wrap; }
+      if (!items.length) { wrap.appendChild(emptyView(typeof emptyText === 'function' ? emptyText(p) : emptyText)); return wrap; }
       const list = el('list');
       items.forEach((it) => list.appendChild(item(it)));
       wrap.appendChild(list);
@@ -64,7 +64,7 @@ export const MarketOffers = listScreen({
   name: 'MarketOffers',
   title: 'My offers',
   fetch: (p) => marketApi.offers(p.role),
-  emptyText: 'No offers here yet.',
+  emptyText: (p) => (p.role === 'outgoing' ? 'You have not sent any offers.' : 'No offers waiting for your answer.'),
   item: (o) => card(o.id, `${o.awaitingMyResponse ? '● ' : ''}${o.crop.name} · ${fmtNum(o.terms.quantity)} ${o.terms.unit}`,
     `${perUnit(o.terms.unitPrice, o.terms.currency, o.terms.unit)} · ${o.counterparty.displayName}`,
     `${o.awaitingMyResponse ? 'Your turn' : OFFER_STATUS[o.status]} · ${relTime(o.updatedAt)}`),
@@ -140,7 +140,7 @@ export const MarketDeals = listScreen({
   name: 'MarketDeals',
   title: 'My deals',
   fetch: () => marketApi.deals(),
-  emptyText: 'No deals yet.',
+  emptyText: 'No deals yet. A deal appears once an offer is accepted.',
   item: (d) => card(d.id, `${d.crop.name} · ${fmtNum(d.terms.quantity)} ${d.terms.unit}`,
     `${d.role === 'buyer' ? 'Buying from' : 'Selling to'} ${d.counterparty.displayName}`, DEAL_STATUS[d.status]),
 });
