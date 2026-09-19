@@ -57,3 +57,12 @@ test('recurrence expansion supports interval days, weekdays and month-end clampi
   assert.deepEqual(occurrenceDates('2026-09-21', { frequency: 'weekly', weekdays: [1,4] }, { horizonDays: 10 }), ['2026-09-21','2026-09-24','2026-09-28','2026-10-01']);
   assert.deepEqual(occurrenceDates('2026-01-31', { frequency: 'monthly', day: 31 }, { horizonDays: 65 }), ['2026-01-31','2026-02-28','2026-03-31']);
 });
+
+test('a wrong PIN increments failures and returns INVALID_LOGIN instead of a PostgreSQL type error', async () => {
+  const t = await setup();
+  try {
+    await assert.rejects(() => t.auth.login({ phone: '9100000001', pin: '000000' }), (e) => e.code === 'INVALID_LOGIN');
+    const row = (await t.pool.query(`SELECT c.failed_attempts FROM app.auth_credentials c JOIN app.forum_user_state s ON s.user_id=c.user_id WHERE s.demo_key='10000001'`)).rows[0];
+    assert.equal(Number(row.failed_attempts), 1);
+  } finally { await t.close(); }
+});
