@@ -49,6 +49,7 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
 
   async function farms(user) {
     const r = await pool.query(`SELECT f.id,f.name,f.timezone,f.country_code,f.region_code,m.role,
+      (SELECT name FROM app.regions WHERE code=f.region_code) region_name,
       (SELECT count(*)::int FROM app.farm_tasks t WHERE t.farm_id=f.id AND t.local_date=(now() AT TIME ZONE f.timezone)::date
        AND t.status NOT IN ('completed','verified','cancelled','skipped')) open_tasks
       FROM app.farms f JOIN app.farm_members m ON m.farm_id=f.id
@@ -56,20 +57,28 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
     return { items: r.rows };
   }
 
-  // A member with no farm would otherwise hit a dead end, so they can start their own. The farm
-  // takes the profile's region and a country timezone; calling again returns the same farm.
+  // A farmer can run several farms (their own plots, a family farm, a cooperative). A farm takes a
+  // name and a region (default: the profile's), whose centre point gives it weather and nearby
+  // mandis, and the region's country timezone. The same name again returns the existing farm, so a
+  // repeated keypad submit never makes a second copy.
   const TIMEZONES = { IN: 'Asia/Kolkata', VN: 'Asia/Ho_Chi_Minh', BD: 'Asia/Dhaka', TW: 'Asia/Taipei' };
-  async function createFarm(user) {
+  const MAX_OWNED_FARMS = 10;
+  async function createFarm(user, body = {}) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`farm-owner:${user.id}`]);
-      const existing = (await client.query(`SELECT id FROM app.farms WHERE owner_user_id=$1 AND status='active' ORDER BY created_at LIMIT 1`, [user.id])).rows[0];
+      const profile = (await client.query(`SELECT p.display_name, r.code FROM app.user_profiles p
+        JOIN app.regions r ON r.id=p.region_id WHERE p.user_id=$1`, [user.id])).rows[0];
+      if (!profile) fail('PROFILE_REQUIRED', 'Complete your profile first.');
+      const name = body.name == null || body.name === '' ? `${profile.display_name}'s farm`.slice(0, 80) : text(body.name, 'name', 80);
+      const existing = (await client.query(`SELECT id FROM app.farms WHERE owner_user_id=$1 AND status='active' AND lower(name)=lower($2)`, [user.id, name])).rows[0];
       if (existing) { await client.query('COMMIT'); return { id: existing.id, duplicate: true }; }
-      const region = (await client.query(`SELECT r.code, r.country_code, r.latitude, r.longitude, p.display_name
-        FROM app.user_profiles p JOIN app.regions r ON r.id=p.region_id WHERE p.user_id=$1`, [user.id])).rows[0];
-      if (!region) fail('PROFILE_REQUIRED', 'Complete your profile first.');
-      const name = `${region.display_name}'s farm`.slice(0, 80);
+      const owned = (await client.query(`SELECT count(*)::int n FROM app.farms WHERE owner_user_id=$1 AND status='active'`, [user.id])).rows[0].n;
+      if (owned >= MAX_OWNED_FARMS) throw validation(`You can own up to ${MAX_OWNED_FARMS} farms.`, 'name');
+      const regionCode = body.regionCode == null || body.regionCode === '' ? profile.code : String(body.regionCode);
+      const region = (await client.query('SELECT code, country_code, latitude, longitude FROM app.regions WHERE code=$1', [regionCode])).rows[0];
+      if (!region) throw validation('Choose a region.', 'regionCode');
       const farm = (await client.query(`INSERT INTO app.farms(name,owner_user_id,country_code,region_code,timezone,latitude,longitude)
         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
       [name, user.id, region.country_code, region.code, TIMEZONES[region.country_code] || 'UTC', region.latitude, region.longitude])).rows[0];

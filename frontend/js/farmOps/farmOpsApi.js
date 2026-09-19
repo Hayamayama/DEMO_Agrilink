@@ -1,7 +1,8 @@
 import { getApi, postApi, putJSON } from '../api.js';
 
 export const farms = () => getApi('/api/farms');
-export const createFarm = () => postApi('/api/farms', {});
+export const createFarm = (body = {}) => postApi('/api/farms', body);
+export const regions = () => getApi('/api/auth/options').then((o) => o.regions);
 export const today = (farmId, date) => getApi(`/api/farms/${farmId}/today?date=${date}`);
 export const tasks = (farmId, query = '') => getApi(`/api/farms/${farmId}/tasks${query ? `?${query}` : ''}`);
 export const upcoming = (farmId, from, days = 7) => getApi(`/api/farms/${farmId}/upcoming?from=${from}&days=${days}`);

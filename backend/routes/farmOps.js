@@ -22,7 +22,7 @@ export function createFarmOpsRouter({ pool, auth, farmPriceService, weatherGette
   });
 
   router.get('/', send((req) => service.farms(req.user)));
-  router.post('/', json, send((req) => service.createFarm(req.user), (o) => (o.duplicate ? 200 : 201)));
+  router.post('/', json, send((req) => service.createFarm(req.user, req.body || {}), (o) => (o.duplicate ? 200 : 201)));
   router.get('/:farmId/today', send((req) => service.overview(req.user, req.params.farmId, req.query.date)));
   router.get('/:farmId/prices', send((req) => service.prices(req.user, req.params.farmId, String(req.query.crop || 'rice').toLowerCase())));
   router.get('/:farmId/spray-assessment', asyncHandler(async (req, res) => {

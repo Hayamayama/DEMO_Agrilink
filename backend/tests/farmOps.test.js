@@ -122,3 +122,24 @@ test('a member without a farm can start one, once, and use it', async () => {
     assert.equal((await t.ops.overview(user, farm.id, '2026-09-19')).summary.total, 1, task.id);
   } finally { await t.close(); }
 });
+
+test('a farmer can run several farms, each in its own region', async () => {
+  const t = await setup();
+  try {
+    const regionId = (await t.pool.query("SELECT id FROM app.regions WHERE code='IN-BR'")).rows[0].id;
+    const { user } = await t.auth.signup({ phone: '9199999998', pin: '135790', displayName: 'Two Farms', village: 'Hajipur', regionId });
+    const home = await t.ops.createFarm(user, { name: 'Home plot' });
+    const coop = await t.ops.createFarm(user, { name: 'River cooperative', regionCode: 'IN-UP-01' });
+    assert.notEqual(home.id, coop.id);
+    assert.deepEqual(await t.ops.createFarm(user, { name: '  home PLOT ' }), { id: home.id, duplicate: true }, 'same name again is the same farm');
+    const items = (await t.ops.farms(user)).items;
+    assert.deepEqual(items.map((f) => [f.name, f.region_code, f.role]), [['Home plot', 'IN-BR', 'owner'], ['River cooperative', 'IN-UP-01', 'owner']]);
+    assert.ok(items.every((f) => f.region_name), 'the list names each farm\'s region');
+    await assert.rejects(() => t.ops.createFarm(user, { name: 'Nowhere', regionCode: 'XX-NONE' }), (e) => e.code === 'VALIDATION_ERROR' && e.field === 'regionCode');
+    await assert.rejects(() => t.ops.createFarm(user, { name: 'x'.repeat(81) }), (e) => e.code === 'VALIDATION_ERROR');
+    // Each farm keeps its own work.
+    await t.ops.createTask(user, coop.id, { title: 'Canal check', type: 'irrigation', localDate: '2026-09-19', isAllDay: true });
+    assert.equal((await t.ops.overview(user, home.id, '2026-09-19')).summary.total, 0);
+    assert.equal((await t.ops.overview(user, coop.id, '2026-09-19')).summary.total, 1);
+  } finally { await t.close(); }
+});
