@@ -431,3 +431,10 @@
   - 延遲最長約 4 秒（輪詢間隔）；多頁列表（按過「More…」）在刷新時會回到第一頁。
   - 每個登入中的畫面每 4 秒一個很小的請求；`/api/market` 每 IP 每分鐘上限 240 次，同一個 NAT 後面很多人時要留意。
   - 新登入的會員從「現在」開始收事件，不會補發登入前的事件（首頁徽章與「My Offers」仍看得到待回覆項目）。
+
+## 202609191637 · 部署 Local Market 到主機
+
+- **做了什麼**：在主機（`ubuntu@203.116.30.130`）執行 `deploy/setup.sh`，主機從 `61dbe1b` 更新到 `89966c0`（含組員的 TTS 更新與 Local Market 的 schema 之外全部程式），服務 active。日誌：`market: Local Market enabled`、`forum: Farmer Circle enabled`、`auth: PostgreSQL sessions enabled`。006 早已在資料庫套用，本次沒有再動資料庫。
+- **驗證結果**（從外部走 HTTPS，只讀，沒有建立任何資料）：`/api/market/listings`、`/api/market/sync` 未登入回 401；`/css/market.css`、`/js/market/marketSync.js` 回 200；首頁有載入 market.css；`/api/forum/communities` 200，`/api/prices` 缺參數回 400（原本行為）。
+- **還沒驗證**：登入後的實際流程（避免在正式站建立示範資料）；兩台真機同時操作；Cloud Phone 鍵碼。
+- **給組員的注意事項**：主機 Node 是 18（`package.json` 要求 >=20，安裝時有 EBADENGINE 警告，但目前正常運作）。手機或瀏覽器若看到舊畫面，請強制重新整理。主機 `app.crops` 需要有資料，發布貨源的作物選單才不會是空的。
