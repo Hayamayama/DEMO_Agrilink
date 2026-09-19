@@ -211,3 +211,13 @@
   - 目前只有 `IN-UP-01`（Rampur）有市場資料；VN/BD/TW 無資料。
   - **`DATABASE_URL`（含密碼）只能放主機 `backend/.env`，絕不進 repo / devlog**；systemd 服務已用 `EnvironmentFile` 讀取。密碼曾出現在對話中，建議之後更換。
   - 表名/欄位若與 Kris 的 migration 有衝突或命名想法請先提，003 尚未套用，改起來成本低。
+
+## 202609191326 · 部署 Market Prices（003 已由組員套用）
+
+- **發現的問題**：003 已在共用 DB 建好 `app.markets` / `app.market_prices`（唯讀確認存在），但**三張表（markets、market_prices、crops）都還是 0 筆**，主機 `backend/.env` 也還沒有 `DATABASE_URL`。
+- **想解決什麼**：先讓行情頁上線，DB 之後再切換。
+- **做了什麼改動**：執行 `deploy/setup.sh`；外部驗證 `/api/prices`、首頁、新前端檔皆正常；服務日誌顯示 `prices: using in-memory seed data`。沒有改動資料庫。
+- **給組員的注意事項**
+  - **線上目前仍走記憶體假資料**。要切到 Postgres：主機 `~/dogbark/backend/.env` 加 `DATABASE_URL`（`chmod 600`）→ `node db/seed.js`（以 app 角色灌 regions/crops/markets/sample 價格）→ `sudo systemctl restart agrilink`，日誌應顯示 `prices: using Postgres`。
+  - 灌資料會寫入 `regions`（`IN-UP-01`）與 `crops`（rice/wheat/onion/tomato），皆 `ON CONFLICT DO NOTHING`；若其他人已用不同 code 種了 regions/crops，請先協調避免重複。
+  - 切到 DB 後若價格頁報「Prices unavailable」，先看 `journalctl -u agrilink`；DB 掛掉時目前**不會**自動退回假資料（只在未設 `DATABASE_URL` 時才用）。
