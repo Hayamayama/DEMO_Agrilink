@@ -10,13 +10,22 @@ export function createRouter({ screens, els, ctxExtra = {} }) {
   function show() {
     const entry = stack[stack.length - 1];
     const screen = screens[entry.name];
-    els.status.textContent = screen.title || screen.name;
+    ctx.params = entry.params;
+    // A screen may compute its title, and may add a right-aligned badge
+    // (confidence, recording state) without owning the header element.
+    els.status.textContent = (typeof screen.title === 'function' ? screen.title(ctx) : screen.title) || screen.name;
+    const badge = screen.statusBadge?.(ctx);
+    if (badge) {
+      const b = document.createElement('span');
+      b.className = 'status-badge';
+      b.textContent = badge;
+      els.status.appendChild(b);
+    }
     els.content.replaceChildren();
     const root = document.createElement('div');
     root.className = 'scroll';
     els.content.appendChild(root);
     ctx.root = root;
-    ctx.params = entry.params;
     ctx.rerender = show;
     const built = screen.render(ctx);
     if (built) root.appendChild(built);
@@ -25,9 +34,10 @@ export function createRouter({ screens, els, ctxExtra = {} }) {
     const fi = screen.initialFocus?.(ctx);
     if (fi != null) focus.set(fi);
     const l = screen.softLeft, c = screen.softCenter, r = screen.softRight;
-    els.sl.textContent = l ? l.label : 'Menu';
-    els.sc.textContent = c ? c.label : (focus.items.length ? 'Select' : '');
-    els.sr.textContent = r ? r.label : (stack.length > 1 ? 'Back' : 'Exit');
+    const label = (k) => (typeof k.label === 'function' ? k.label(ctx) : k.label);
+    els.sl.textContent = l ? label(l) : 'Menu';
+    els.sc.textContent = c ? label(c) : (focus.items.length ? 'Select' : '');
+    els.sr.textContent = r ? label(r) : (stack.length > 1 ? 'Back' : 'Exit');
     screen.onShow?.(ctx);
   }
 
@@ -65,7 +75,11 @@ export function createRouter({ screens, els, ctxExtra = {} }) {
     switch (action) {
       case 'UP': return focus.move(-1);
       case 'DOWN': return focus.move(1);
-      case 'ENTER': return screen.onEnter?.(focus.current, ctx, focus.index);
+      // The handset's centre soft key reports as Enter, so a screen that labels it
+      // (e.g. "Send") handles it there instead of through list selection.
+      case 'ENTER': return screen.softCenter?.handler
+        ? screen.softCenter.handler(ctx, focus.current, focus.index)
+        : screen.onEnter?.(focus.current, ctx, focus.index);
       case 'SOFT_L': return (screen.softLeft?.handler ?? (() => router.reset()))(ctx);
       case 'SOFT_R':
       case 'BACK': return (screen.softRight?.handler ?? (() => router.pop()))(ctx);

@@ -235,3 +235,41 @@
   - **呼叫 `/api/prices` 一定要帶 `home=<市場代碼>`**，否則預設取字母序第一個；之後 home 應改由使用者 profile 決定。
   - 寫 repo/service 時**不要假設資料庫回傳順序**；本機記憶體版與 Postgres 的行為要都測。
   - 修正版本尚待部署（部署前線上「Your area」仍是 Bareilly）。
+
+## 202609191349 · Ask AI 頁面（依 docs/ASK_AI_PAGE_SPEC.md）
+
+- **發現的問題**
+  - 主選單 Ask AI 原本導到 ComingSoon；後端沒有任何 AI 路由，`api.js` 只有 GET。
+  - router 的中間軟鍵沒有 handler 機制，標題/軟鍵文字只能是固定字串，無法顯示信心度、錄音狀態。
+  - nginx 預設 `client_max_body_size` 1 MB，語音（上限 2.5 MB）會被 nginx 直接擋成 HTML 413；且 app 在 nginx 後面，rate limit 若不設 `trust proxy` 會所有人共用同一個 IP 額度。
+- **想解決什麼**：做出 spec 的 P0（首頁 hero + 4 個預設問題、多鍵輸入、Gemini 結構化答案卡、追問、各種錯誤/離線 fallback、240×320 與 128×160）並加上 P1 的照片/語音漸進增強、印地語切換、最近 5 題紀錄。
+- **做了什麼改動**
+  - 後端：`routes/ai.js`（`GET /api/ai/capabilities`、`POST /api/ai/ask`、`POST /api/ai/ask-media`，每分鐘 6 次 / 每日 30 次限流，multer 只用記憶體不落地）；`services/geminiProvider.js`（直接打 Gemini REST，key 只從 `GEMINI_API_KEY` 讀、放 header）；`aiSchemas.js`（ajv 驗證模型輸出、剝除多餘欄位、超長字串截斷、模型自編的來源/URL 一律丟掉）；`aiAdapter.js`（requestId 冪等、10 分鐘快取、對話保留最後 4 輪、無效輸出修復一次、失敗改用 `aiFallbacks.js` 的固定檢查清單）；`mediaService.js`（檔頭簽章檢查，拒絕 SVG/偽裝檔、超大檔）；`aiPresets.js`。`server.js` 加 CSP、JSON 32kb 上限、`trust proxy loopback`、dotenv。
+  - 前端：`askAI.js`（composer/請求流程/本機歷史與答案快取/匿名事件計數）、`t9.js`（多鍵輸入狀態機 + 整句補全）、`media.js`（拍照壓縮 1024px/JPEG 0.72/去 EXIF、MediaRecorder 30 秒自動停、釋放麥克風）、`dom.js`；畫面 `askAIHome / askAIInput / askAIThinking / askAIAnswer(+Sources) / askAIMedia(Options/Photo/Voice/History)`；`css/ask-ai.css`。
+  - router：`softCenter.handler`（中間軟鍵 = Enter）、`title` 可為函式、`statusBadge`、軟鍵文字可為函式。主選單 4 改導 `AskAIHome`。
+  - deploy：`agrilink.conf` 加 `client_max_body_size 4m`。`.env.example` 補齊 AI 變數（key 留空）。
+  - 測試：新增 `aiAdapter.test.js`（34 項）與 `test/t9.test.js`（10 項），全部 56 項通過；瀏覽器 240×320 / 128×160 用鍵盤走過：預設題 → 答案、`##` 送出、追問、Back 回首頁、Options/Photo/Voice 畫面。
+- **給組員的注意事項**
+  - **本機沒有 `GEMINI_API_KEY`，所以真正的 Gemini 呼叫還沒實測過**（只用假 fetch 測了請求格式與錯誤處理）。部署後請在主機 `backend/.env` 加 key → 重啟 → 日誌應出現 `ai: gemini configured`，首頁右上角由 `○ OFF` 變 `● ON`。沒有 key 時所有問題都回「BASIC TIPS」固定清單，不會白屏。
+  - Gemini 用 REST + fetch，**沒有裝 `@google/genai`**（和 weatherService 同一套 timeout/abort 寫法，也方便測試）；spec 列的其他套件（ajv、multer、express-rate-limit、dotenv）都有裝。
+  - **Demo 照片還沒放**：請把真實葉片照放到 `frontend/img/sample-leaf-1.jpg`、`sample-leaf-2.jpg`（說明見該資料夾 README）。
+  - 部署要重跑 `deploy/setup.sh`（會 `npm ci` 新套件並更新 nginx snippet 的上傳大小）。
+  - `test/t9.test.js` 直接 import 前端 ESM 檔，需要 Node 22+ 才會自動判斷 ESM；主機若是 Node 20 請改用 `node --experimental-detect-module --test`。
+  - 語音/相機在 Cloud Phone 與 itel 實機上**都還沒驗證**；不支援時 Voice 選項會顯示「Not available on this device」並可直接改打字。
+  - 預設題的 id 前後端各有一份（`frontend/js/askAI.js`、`backend/services/aiPresets.js`），改題目時兩邊要一起改。
+
+## 202609191352 · 建立本機 backend/.env
+
+- **做了什麼改動**：從 `.env.example` 複製出 `backend/.env`（權限 600，已確認被 `.gitignore` 忽略），`GEMINI_API_KEY` 留空待填。
+- **給組員的注意事項**：key 只填在各自機器／主機的 `backend/.env`，不要貼進 repo、devlog 或對話。
+
+## 202609191356 · Gemini 模型改為 gemini-3.5-flash-lite
+
+- **發現的問題**：填好 key 後實測仍回 fallback。直接呼叫 Gemini 得到 404：spec 指定的 `gemini-2.5-flash-lite` 已不開放給新用戶（key 本身正常）。
+- **做了什麼改動**：用模型清單 API 確認 `gemini-3.5-flash-lite` 可用，實測約 2 秒回應、輸出通過 ajv schema；`backend/.env`、`.env.example`、`geminiProvider.js` 預設值都改成它。
+- **給組員的注意事項**：**主機的 `backend/.env` 也要把 `GEMINI_MODEL` 改成 `gemini-3.5-flash-lite`**（或刪掉該行用程式預設），否則線上會一直回 BASIC TIPS。spec 第 10 節的模型名已過時。
+
+## 202609191358 · 本機驗證 Gemini 真實回答
+
+- **做了什麼**：組員本機重啟後，Ask AI 按 1（黃葉）得到 Gemini 真實回答：無 BASIC TIPS 標籤，含 Bottom line、Do now 2 項、Watch for、Local context、Ask next 2 題，格式驗證通過。
+- **給組員的注意事項**：本機驗證只涵蓋文字問答；照片、語音、印地語輸出尚未用真實 Gemini 測過。桌機寬螢幕看會被拉寬，要看實際樣子請用瀏覽器 DevTools 設 240×320。
