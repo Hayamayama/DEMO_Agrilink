@@ -259,3 +259,25 @@
 - **在修正 ledger 前，不要直接執行 `npm run db:migrate`。** 現行 `backend/db/migrate.js` 以完整檔名（如 `001_foundation.sql`）檢查 migration；前三筆 ledger 缺少 `.sql`，runner 可能誤判未執行並嘗試重跑已存在的 schema。
 - 修復時需統一一種格式：要麼將既有前三筆 ledger 改為完整檔名，要麼修改 runner 一律以不含副檔名的 version 比對；先在 VM 備份／transaction 驗證，再恢復自動 migration。
 - GUI 僅用 `agrilink_app`；migration 與 schema 管理仍使用 migrator role。不要將 VM 憑證複製到 repo、截圖或聊天室。
+
+---
+
+## 202609191609 GMT+8 — 修正 migration runner 的版本比對
+
+### 發現／問題
+
+- VM ledger 同時有 `001_foundation`（無副檔名）與 `004_identity_admin.sql`（含副檔名）；舊版 `migrate.js` 以完整檔名比對，會把 001–003 當成未套用而重跑。
+
+### 要解決什麼
+
+- 讓 `npm run db:migrate` 可以安全地在共用 VM 上套用 `005_forum.sql`。
+
+### 做了什麼改動
+
+- `backend/db/migrate.js` 以去掉 `.sql` 的 version 比對 ledger，新紀錄一律寫入不含副檔名的 version；抽出 `runMigrations()` 供測試使用。
+- 新增 `backend/tests/migrate.test.js`（PGlite），重現 VM 的混合格式 ledger，確認只會套用 005 且重跑不重複。全部 100 項測試通過。
+
+### 組員注意事項
+
+- 既有 ledger 不需要改；新舊兩種格式都會被視為已套用。
+- VM 仍須以 migrator role 執行 `npm run db:migrate` 套用 005，執行前先備份資料庫。
