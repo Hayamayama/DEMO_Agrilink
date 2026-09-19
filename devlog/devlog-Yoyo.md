@@ -81,3 +81,19 @@
 - **想解決什麼**：讓 Cloud Phone simulator / 桌面測試時軟鍵行為與官方一致。
 - **做了什麼改動**：`frontend/js/keypad.js`：`Escape`→`SOFT_L`、`F12`→`SOFT_R`（`Backspace` 仍為 BACK，`SoftLeft/SoftRight` 保留）。
 - **給組員的注意事項**：實機的真實 key 值仍未驗證，測試時開 `?debug=1` 記錄後回填 `KEYMAP`。
+
+## 202609191156 · 實機測試前：部署方案（主辦 Ubuntu 主機）
+
+- **發現的問題**
+  - 主機已由主辦預先配置：nginx 在 80/443、certbot 已簽好 `<IP>.sslip.io` 網域憑證，官方範例放在 `/cloudphone-2025meichuhackathon-demo/`，根路徑 `/` 是空的。**不需要自己申請網域/憑證。**
+  - 主機 Node 是 **18.19**（非 proposal 假設的 20），且沒裝 pm2。
+  - nginx 站台設定是 certbot 管理的，不能整個覆蓋。
+- **想解決什麼**：用最小改動把 AgriLink 掛到根路徑，不破壞主辦的範例站與憑證。
+- **做了什麼改動**
+  - 新增 `deploy/setup.sh`（可重複執行：clone/pull、`npm ci`、systemd 服務、nginx 只加一行 `include`，改前自動備份、`nginx -t` 通過才 reload）、`deploy/agrilink.service`、`deploy/agrilink.conf`。
+  - 用 systemd 取代 pm2（省去多裝套件）；Node 18 已驗證程式相容。
+- **給組員的注意事項**
+  - 每人的主機不同（IP、私鑰都是個人的），**IP / 私鑰 / IMEI 都不要進 repo**。
+  - 主機上 `git clone` 走公開 https，所以**要先 push 才能部署**。
+  - 各組員本機 Node 版本可能與主機不同（主機為 18），請避免用 Node 20+ 才有的語法。
+  - 主機上更新：`ssh` 進去後 `bash ~/dogbark/deploy/setup.sh`。

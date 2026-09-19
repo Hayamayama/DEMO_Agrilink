@@ -1,0 +1,16 @@
+[Unit]
+Description=AgriLink backend
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/dogbark/backend
+Environment=PORT=3000
+EnvironmentFile=-/home/ubuntu/dogbark/backend/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
