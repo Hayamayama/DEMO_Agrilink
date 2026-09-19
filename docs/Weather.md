@@ -1,46 +1,41 @@
-Here is the exact prompt you can copy and paste into an AI (or give back to me) to immediately generate the production-ready HTML, CSS, and JS code for your weather module.
+# Weather 模組規格（取代原 FarmPulse prompt）
 
----
+> 原版是一份給 AI 的 prompt，且有多處與官方規範/proposal 不符。本文件為修正後的正式規格，實作見 `backend/services/weatherService.js`、`frontend/js/screens/weather.js`。
 
-**Copy and Paste the Prompt Below:**
+## 修正對照
 
-**Role:** You are a Senior Frontend Engineer and Cloud-Rendered App Specialist competing in a 36-hour hackathon. We have 25 hours left until the demo.
+| 原版 | 修正 | 原因 |
+|---|---|---|
+| App 名 FarmPulse | AgriLink | 與 proposal 一致 |
+| 320×240 landscape | **240×320**（加 128×160） | Cloud Phone 官方僅支援這兩種 portrait 解析度 |
+| `current=precipitation` 當降雨機率 | 用 `daily.precipitation_probability_max` | `precipitation` 是雨量 (mm)，不是機率 |
+| 前端直連 Open-Meteo | 後端代理 + 30 分鐘快取 | 省額度（免費 1 萬/日）、失敗可回傳上次資料 |
+| 300ms 按鍵 debounce | 只對網路請求節流，按鍵不加 | 官方指南沒有 debounce 規則；按鍵 debounce 會讓導航變鈍 |
+| 使用 cloudfone-starter (Next.js) | Vanilla ES modules | 與 proposal「無 build」原則一致；官方只要求標準網頁 + HTTPS |
+| 座標寫死台中 | 使用 user.lat/lng（開發時可 `?lat=&lng=`） | 個人化上下文 |
 
-**Objective:** Write the complete HTML, CSS, and vanilla JavaScript for the "Weather Forecast" module of our agricultural cloud-phone app, "FarmPulse". The code must be strictly tailored for a feature phone running via server-side rendering, acting as a dumb terminal.
+## API
 
-**Technical Constraints & Environment:**
+`GET /api/weather?lat=&lng=` →
 
-* **Screen Size:** Exactly 320x240 pixels (Landscape/Portrait depending on CSS orientation, lock the body to `width: 320px; height: 240px`). Must use `overflow: hidden` to prevent native browser scrolling.
-* **Tech Stack:** Vanilla HTML, CSS, and JavaScript.
-* **Input Method:** Keypad ONLY. No mouse, no touch. You must write a centralized JavaScript event listener for `keydown` that handles:
-* 4 Arrow keys (`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`)
-* `Enter` (OK button)
-* Number keys (`0`-`9`)
-* `*` and `#`
+```json
+{
+  "current": { "temp": 28, "precip_mm": 0, "code": 0 },
+  "daily": [{ "date": "2026-09-19", "code": 51, "tmax": 31, "tmin": 24, "rain_prob": 37, "rain_mm": 0.8, "et0": 3.88 }],
+  "advice": { "action": "wait|spray|irrigate|harvest", "reason": "<=30 chars" },
+  "attribution": "Weather data by Open-Meteo.com",
+  "stale": false
+}
+```
 
+上游：`https://api.open-meteo.com/v1/forecast?latitude=&longitude=&current=temperature_2m,precipitation,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,et0_fao_evapotranspiration&forecast_days=3&timezone=auto`
 
-* **UI/UX:** Extremely high contrast, large typography (18px+), and clear visual focus states (e.g., a thick yellow border or background inversion) so the user knows which element is currently selected via the D-pad.
+授權：免費版僅限非商業、需標示 CC-BY；商用需付費 key。
 
-**API Integration:**
-You will fetch data using the Open-Meteo API.
-*Endpoint:* `[https://api.open-meteo.com/v1/forecast?latitude=](https://api.open-meteo.com/v1/forecast?latitude=){local_lat}&longitude={local_lon}&daily=weather_code&current=precipitation,temperature_2m&forecast_days=3`
-*(Note: For the purpose of this hackathon code, you can hardcode the `local_lat` and `local_lon` to Taichung City, Taiwan (Lat: 24.14, Lon: 120.67), or write a simple function that allows passing them in).*
+## UI（240×320；128×160 隱藏次要資訊）
 
-* The UI needs to display: Current Temperature, Current Precipitation Probability, and a 3-day forecast mapped from the `daily=weather_code` to simple text/emoji icons (e.g., ☀️, 🌧️, ☁️) to avoid loading external image assets.
-
-**Architectural References:**
-Please write the code assuming it will be dropped into the environment defined by:
-
-1. `[https://github.com/cloudfonecom/cloudfone-starter](https://github.com/cloudfonecom/cloudfone-starter)` (Assume standard template injection, keep logic modular).
-2. `[https://www.cloudphone.tech/dev-guidelines](https://www.cloudphone.tech/dev-guidelines)` (Adhere strictly to their input debouncing rules and lightweight DOM recommendations).
-
-**Required Output:**
-Please provide:
-
-1. **`index.html`**: The semantic DOM structure.
-2. **`style.css`**: The strict 320x240 layout, flexbox/grid for easy alignment, and distinct `.focused` classes for D-pad navigation.
-3. **`app.js`**: The logic to fetch the Open-Meteo API, parse the JSON, map the WMO `weather_code` to simple icons, render the DOM, and handle keypad navigation with a 300ms debounce to prevent server flooding.
-
-Keep the code lean, hackathon-ready, and immediately executable.
-
----
+- 大字現在溫度 + 天氣圖示 + 今日降雨機率。
+- 3 日列（今日/明日/後日），UP/DOWN/LEFT/RIGHT 切換焦點；ENTER 切換「農事建議 ↔ 當日細節（雨量、ET0）」。
+- Menu = 回主選單；Back = 返回（RSK 語意）。
+- WMO code → emoji + 文字標籤（手機字型缺 emoji 時仍可讀）。
+- loading / error（"Weather unavailable"）/ stale 三態。

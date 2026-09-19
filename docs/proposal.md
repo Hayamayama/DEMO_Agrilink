@@ -134,6 +134,8 @@ SplashScreen
 | 部署 | 公開 HTTPS URL | 非 GitHub repo 網址 |
 | 測試機 | itel NEO R60+ | 比賽期間提供 |
 | Server | Ubuntu 24.04, root, SSH | 比賽提供 |
+| 右軟鍵 (RSK) | 官方語意：有 history 就「返回」，否則「關閉頁面」 | router 需與 `history` 同步（見 §6.4） |
+| 左軟鍵 (LSK) | 官方語意：menu / options / settings | 本 app 用作回主選單 |
 
 ### 自訂技術原則
 
@@ -303,7 +305,7 @@ export default {
 ```js
 // router.js
 router.push(name, params)   // 疊上新畫面
-router.pop()                // 返回上一層
+router.pop()                // 返回上一層（實作為 history.back()，使 RSK 在根畫面時由平台關閉頁面）
 router.reset(name)          // 清空堆疊，回到指定畫面 (主選單用)
 router.replace(name, params)
 ```
@@ -707,6 +709,12 @@ Base URL：`https://<your-domain>/api`
 | GET | `/prices/net-profit?crop=&from=&to=&qty=` | 淨利計算 |
 | POST | `/prices/alert` | body `{ crop, target, direction }` |
 
+### 天氣
+
+| Method | Path | 說明 |
+|---|---|---|
+| GET | `/weather?lat=&lng=` | Open-Meteo 後端代理（30 分鐘快取，上游失敗回傳最後成功值 `stale:true`）→ `{ current, daily[3], advice, attribution }`。建議 (`advice`) 由規則依真實數據產生，非 LLM 猜測 |
+
 ### 市集
 
 | Method | Path | 說明 |
@@ -1001,7 +1009,9 @@ t9.handleKey(action);  // 由 keypad 分發進來
 ssh root@<server-ip>            # 或用提供的 key
 
 # 安裝
-apt update && apt install -y nodejs npm nginx certbot python3-certbot-nginx
+apt update && apt install -y nginx certbot python3-certbot-nginx curl
+# Ubuntu 24.04 的 apt nodejs 版本過舊，改用 NodeSource 安裝 Node 20
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt install -y nodejs
 npm i -g pm2
 
 # 專案
@@ -1095,6 +1105,9 @@ nginx -t && systemctl reload nginx
 | 相機/硬體 API 不保證可用 | 圖片辨識做不了 | 砍掉或標 optional，用預載樣本並註明 |
 | Hindi/Bengali 字型不支援 | 在地化展示不出來 | 先確認；不支援則主打 en，hi/bn 作示意 |
 | 時間不夠 | 功能做不完 | 嚴守 P0→P1→P2 優先級；P3 遊戲最後才碰 |
+| Open-Meteo 免費版僅限非商業（1 萬次/日）、需標示 CC-BY | 商用上線違規 | 比賽/demo 使用；商用改付費 key；後端快取降低呼叫量；UI 保留 attribution |
+| Agmarknet (data.gov.in) 資料延遲一天/偶爾掛掉 | 行情空白 | 每日排程寫入 DB，app 只讀 DB；失敗沿用昨日資料並標 cached；seed 保底 |
+| 越南/孟加拉沒有開放即時價格 API | 無真實資料 | 第一版僅 IN 用真實資料；VN/BD 用 seed 並標「sample」，不對外宣稱為真實 |
 | 只做出「單人 app」 | 失去核心差異 | **即時多用戶 (Marketplace WS) 屬 P1 高優先，是整個 thesis 的證明，不可砍** |
 
 ---

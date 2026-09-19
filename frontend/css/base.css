@@ -1,0 +1,17 @@
+:root {
+  --bg: #0b1f0e;
+  --fg: #ffffff;
+  --dim: #a9c4ac;
+  --accent: #ffd400;
+  --focus-bg: #ffd400;
+  --focus-fg: #000000;
+  --fs: 16px;
+  --row-h: 44px;
+  --pad: 6px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+  font: 600 var(--fs)/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.dim { color: var(--dim); }
+.big { font-size: calc(var(--fs) * 2.4); font-weight: 800; }
+.msg { padding: var(--pad); text-align: center; color: var(--dim); }

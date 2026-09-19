@@ -1,0 +1,8 @@
+/* 128x160: half of the QVGA baseline */
+@media (max-width: 160px) {
+  :root { --fs: 10px; --row-h: 20px; --pad: 3px; }
+  .big { font-size: calc(var(--fs) * 1.8); }
+  .item { padding: 2px var(--pad); }
+  .hide-small { display: none !important; }
+  .msg { padding: 2px var(--pad); }
+}
