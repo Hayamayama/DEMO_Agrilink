@@ -161,3 +161,101 @@
 
 - Cloud Phone demo 仍位於同一網域的 `/cloudphone-2025meichuhackathon-demo/`；較長的路徑優先匹配，因此不受 Agrilink 根路徑代理影響。
 - Agrilink 由 `agrilink.service` 管理。檢查狀態請用 `sudo systemctl status agrilink`；更新後應重啟該 service，不要直接手動執行 `node server.js` 佔用 3000 埠。
+
+---
+
+## 202609191247 GMT+8 — 自架 PostgreSQL 與基礎 schema 上線
+
+### 發現／問題
+
+- AgriLink 的核心流程是多人共享狀態：刊登、表達興趣、通知、登入與點數都會有同時寫入需求；proposal 中的 SQLite 設計不再是目前後端的正確基礎。
+- VM 當時未安裝 PostgreSQL 或 Docker，但既有 Nginx（80/443）與 `agrilink.service`（127.0.0.1:3000）正在服務，資料庫部署不得干擾現有網站。
+
+### 要解決什麼
+
+- 在同一台 Ubuntu VM 建立只供後端使用、不可由公網直接連線的 PostgreSQL authoritative store。
+- 建立登入／個人化／市集的最小可用資料結構，並保留安全 migration 與權限分工。
+
+### 做了什麼改動
+
+- 安裝 PostgreSQL 16，建立 `agrilink` database；資料庫只監聽 `127.0.0.1:5432`，沒有開放 5432 防火牆規則。
+- 建立兩個非 superuser 角色：`agrilink_migrator` 負責 schema migration、`agrilink_app` 供 Node application 讀寫；實際憑證僅保存在 VM 權限 `600` 的設定檔，未進 Git、未記錄於本檔。
+- 撤除 `public` schema 的預設建表權限，只授予 application role 對 `app` schema 的必要權限。
+- 套用 `001_foundation` 與 `002_marketplace`：建立地區、使用者／身份、profile、作物、刊登、interest、通知與 outbox event 等表與索引。
+- 新增／維護 PostgreSQL 設計與交接文件：`docs/POSTGRESQL_SCHEMA_PLAN.md`；環境變數範例只保留無密碼的 `DATABASE_URL` 格式。
+
+### 組員注意事項
+
+- Browser／Cloud Phone 前端不可直接使用資料庫帳密；所有資料存取必須經 Node API／WebSocket。
+- PostgreSQL superuser 採 VM 本機 peer authentication；日常應用請使用 `agrilink_app`，schema 變更只使用 `agrilink_migrator`。
+- 不要在部署過程中重啟或手動搶佔 3000 埠；資料庫本身與 Nginx 路由無直接衝突。
+
+---
+
+## 202609191325 GMT+8 — Market Prices migration 003 套用與驗證
+
+### 發現／問題
+
+- 組員新增 Market Prices API／畫面後，需要把市場與每日行情資料從記憶體假資料切換為 PostgreSQL 的可追溯資料來源。
+
+### 要解決什麼
+
+- 將市場／行情結構安全加入既有 `app` schema，並保持 demo 資料與真實資料來源可區分。
+
+### 做了什麼改動
+
+- 拉取並 review `backend/db/migrations/003_market_prices.sql` 後，以 migrator role 套用至共用 VM database。
+- 新增 `app.markets`、`app.market_prices`、作物／市場／日期查詢索引，以及 app role 的必要讀寫權限。
+- VM `app.schema_migrations` 已記錄 `003_market_prices`；application role 已可讀取新表。
+
+### 組員注意事項
+
+- 行情資料必須保留 `source` 與 `is_sample`，不能把 sample 資料說成即時市場資料。
+- schema 已存在不代表 production 已有資料；seed／外部同步仍須分別執行與驗證。
+
+---
+
+## 202609191505 GMT+8 — Identity / Admin migration 004 狀態確認
+
+### 發現／問題
+
+- Keypad-first login 與管理功能需要持久化 credentials、session、application settings 與 audit log。
+
+### 要解決什麼
+
+- 確認新 identity/admin schema 已在共用 VM 套用，而非只存在於 Git。
+
+### 做了什麼改動
+
+- 驗證 VM migration ledger 已包含 `004_identity_admin.sql`，並確認 `agrilink.service` 為 active。
+- 此 migration 新增 user role、`auth_credentials`、`auth_sessions`、`app_settings` 與 `admin_audit_log`，並授予 application role 所需權限。
+
+### 組員注意事項
+
+- credentials 僅存 phone lookup hash 與 PIN hash；禁止加入明碼電話號碼、PIN 或 session secret 欄位。
+- 登入／管理相關變更應一併寫 audit log，且不可把 session token 輸出到 console、devlog 或 Git。
+
+---
+
+## 202609191530 GMT+8 — PostgreSQL GUI 連線與 migration ledger 稽核
+
+### 發現／問題
+
+- 需要讓組員能以 GUI 檢視資料庫，又不能為 TablePlus／pgAdmin 對公網開放 5432。
+- 現有 migration ledger 的版本格式不一致：`001_foundation`、`002_marketplace`、`003_market_prices` 沒有 `.sql`，但 `004_identity_admin.sql` 含副檔名。
+
+### 要解決什麼
+
+- 提供安全的開發者 GUI 存取方式，並在 migration runner 造成重複套用前標記命名風險。
+
+### 做了什麼改動
+
+- 驗證可用 TablePlus 的 SSH tunnel 連線：Over SSH 模式下，database host 填 VM 端 `127.0.0.1`、port 填 `5432`、database 為 `agrilink`；不要同時使用手動 5433 tunnel 與 TablePlus Over SSH。
+- 核對 VM PostgreSQL 16.15、`agrilink.service` active 與四筆 migration ledger。
+- 更新本 devlog，補齊 PostgreSQL 上線、001–004 migration、權限邊界與 GUI 操作交接。
+
+### 組員注意事項
+
+- **在修正 ledger 前，不要直接執行 `npm run db:migrate`。** 現行 `backend/db/migrate.js` 以完整檔名（如 `001_foundation.sql`）檢查 migration；前三筆 ledger 缺少 `.sql`，runner 可能誤判未執行並嘗試重跑已存在的 schema。
+- 修復時需統一一種格式：要麼將既有前三筆 ledger 改為完整檔名，要麼修改 runner 一律以不含副檔名的 version 比對；先在 VM 備份／transaction 驗證，再恢復自動 migration。
+- GUI 僅用 `agrilink_app`；migration 與 schema 管理仍使用 migrator role。不要將 VM 憑證複製到 repo、截圖或聊天室。
