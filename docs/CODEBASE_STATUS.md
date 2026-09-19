@@ -1,6 +1,6 @@
 # AgriLink：程式碼現況盤點
 
-> 寫給組員與組員的 AI agent：開工前先讀這份。截至 **2026-09-19**（`b49382c` 加上 CI 與統一錯誤格式）。
+> 寫給組員與組員的 AI agent：開工前先讀這份。截至 **2026-09-19**（`engineering-quality` 分支：CI、統一錯誤格式、北方邦 demo 帳號、Node 22）。
 > 程式碼與本文件不一致時，以程式碼為準，並請更新本文件。
 > 工程改進計畫見 [`ENGINEERING_QUALITY_PLAN.md`](ENGINEERING_QUALITY_PLAN.md)。
 
@@ -41,7 +41,7 @@ frontend/
   js/screens/          各畫面；js/forum|market|farmOps/ 各功能的 API / 狀態 / 元件
   css/                 base / layout / responsive + 各功能 CSS（都有 max-width:160px 規則）
 deploy/                systemd（app + mandi sync timer）、nginx snippet、setup.sh
-docs/  devlog/         規格與開發紀錄（見第 9 節）
+docs/  devlog/         規格與開發紀錄（見第 10 節）
 .github/workflows/ci.yml   push / PR → npm ci → npm test → npm run smoke
 ```
 
@@ -108,11 +108,77 @@ MANDI_LIVE=1 npm run forum:dev   # 同上，並在背景同步今天的北方邦
 npm run farm:dev        # Today's Farm
 ```
 
-- demo 帳號：手機 `9100000001`–`9100000005`，PIN `246810`。**只有 `9100000002` 在北方邦（`IN-UP-01`）**，看行情請用它；其他人在 Bihar、越南、孟加拉，沒有同步的行情。
+- demo 帳號與各帳號看得到什麼：見第 7 節。本機 PIN 一律 `246810`。
+- `forum:dev` 會一併建立 Local Market 的 demo 刊登；`farm:dev` 建立 Today's Farm 的 demo 農場（示範日期 2026-09-19）。
 - `.claude/launch.json` 有 `agrilink-dev`（3100）、`farm-dev`（3101）、`prices-live`（3102）。
 - 用 240×320 的視窗測試；128×160 也要看。
 
-## 7. 部署
+## 7. 有資料的地區、選項與 demo 帳號
+
+> demo 時請用**北方邦（Uttar Pradesh）的帳號**：只有這裡有即時行情。
+
+### 地區（`app.regions`）
+
+| code | 名稱 | 行情 | 天氣 | 來源 |
+|---|---|---|---|---|
+| `IN-UP` | Uttar Pradesh（邦） | ✅ 所有同步的 mandi 都屬於這裡 | ✅ | migration 010 |
+| `IN-UP-01` | Rampur | ✅ 用 `IN-UP` 的資料 | ✅ | `db/seed.js` / demo seed |
+| `IN-UP-MRT` | Meerut | ✅ 用 `IN-UP` 的資料 | ✅ | 010 |
+| `IN-UP-AGR` | Agra | ✅ 用 `IN-UP` 的資料 | ✅ | 010 |
+| `IN-UP-LKO` | Lucknow | ✅ 用 `IN-UP` 的資料 | ✅ | 010 |
+| `IN-UP-VNS` | Varanasi | ✅ 用 `IN-UP` 的資料 | ✅ | 010 |
+| `IN-BR` | Bihar | ❌ 沒有同步 | ✅ | demo seed / 008 |
+| `VN-AG` | An Giang（越南） | ❌ | ✅ | demo seed / 008 |
+| `BD-RAJ` | Rajshahi（孟加拉） | ❌ | ✅ | demo seed / 008 |
+| `IN-CEDA-S9-D136` | Rampur（舊 CEDA 匯入） | 只有 2025-10-30 以前的舊資料 | ✅ | CEDA 匯入（只在 VM）|
+
+- **行情**：縣（`IN-UP-xxx`）沒有自己的價格時，改用邦（`IN-UP`）的；列表顯示離會員最近的 8 個 mandi，14 天沒回報的排除，只比較同一品種。
+- 同步範圍：`db/syncMandi.js` 的 `STATES`（目前只有 Uttar Pradesh）× `CROPS`。要加邦或作物就改這兩個表，並加對應的 `app.regions` 列。
+- 2026-09-19 首次同步的覆蓋：wheat 73 個 mandi、potato 24、rice 15、tomato 13、onion 11。歷史每天累積，趨勢要幾天後才有意義。
+- 沒有 DB 時（`npm start` 不帶 `DATABASE_URL`）：in-memory 樣本，只有 `IN-UP-01` 的 Rampur / Bareilly / Moradabad × rice、wheat、onion、tomato，標示為 sample。
+- **天氣**：任何有座標的地區都可以（上表全部都有）。Weather 畫面預設是會員自己的地區，按 `*` 切換到固定清單 Rampur / Taichung / Hanoi / Dhaka；網址加 `?lat=&lng=` 可指定任意座標。
+
+### 作物（`app.crops`）
+
+| code | 行情 | 備註 |
+|---|---|---|
+| `rice` `wheat` `onion` `tomato` `potato` | ✅ 北方邦即時 | `syncMandi.js` 同步的五種 |
+| 其他（例如 `maize`）| ❌ | 可以選、可以刊登 Local Market，但沒有行情 |
+
+### demo 帳號
+
+本機 PIN `246810`；**VM 上是 VM `.env` 的 `DEMO_USER_PIN`**（production 沒有預設 PIN）。
+
+| 手機 | 名字 | 地區 | 作物 | 看得到的資料 |
+|---|---|---|---|---|
+| `9100000011` | Rakesh Tyagi | Meerut | wheat, potato | 行情 ✅；Local Market：自己的 wheat、potato 刊登和 onion 收購；論壇：小麥播種問題（已解決）|
+| `9100000012` | Kavita Chauhan | Agra | potato, onion | 行情 ✅；Local Market：potato 刊登；論壇：馬鈴薯分級報告 |
+| `9100000013` | Imran Ali | Lucknow | rice, tomato | 行情 ✅；**Today's Farm**：Green Field Cooperative 的 worker，明天有一個採番茄任務；Local Market：番茄刊登，Pooja 已出價（等他回應）；論壇：番茄裂果問題（已解決）|
+| `9100000014` | Sunita Maurya | Varanasi | rice, wheat | 行情 ✅；Local Market：rice 刊登；論壇：共乘拖車；**沒有農場** → 可示範「Create my farm」（建在 Varanasi，天氣與行情都是即時的）|
+| `9100000015` | Pooja Rawat | Lucknow | onion, potato | 行情 ✅；Today's Farm：worker；Local Market：potato 刊登、番茄收購、對 Imran 番茄的出價 |
+| `9100000002` | Asha P. | Rampur | rice, wheat | 行情 ✅；Today's Farm worker；Local Market：wheat 刊登、onion 收購 |
+| `9100000006`–`08` | Dr. Priya Sharma / Anil Verma / Suresh Yadav | Rampur | — | 行情 ✅；論壇的認證專家（回覆排在最前）|
+| `9100000009` / `10` | Agri Government / AgriLink AI | Rampur | — | 論壇的政府公告與 AI 回覆作者，不建議拿來 demo |
+| `9100000001` | Ravi K. | Bihar | — | 行情 ❌；Today's Farm **owner**；Local Market 主要的買賣雙人示範（與 Meena）|
+| `9100000005` | Meena S. | Bihar | — | 行情 ❌；論壇 moderator；Today's Farm manager |
+| `9100000003` / `04` | Minh Tran / Rahim U. | 越南 / 孟加拉 | — | 行情 ❌；Today's Farm worker / viewer |
+
+- **Today's Farm** 的 demo 農場是 Green Field Cooperative（Lucknow，`IN-UP-LKO`）；成員：Ravi（owner）、Meena（manager）、Asha、Minh、Imran、Pooja（worker）、Rahim（viewer），以及名稱為 `Test_Admin` 的帳號（若存在，owner）。示範資料以 2026-09-19 為「今天」，網址加 `?demoDate=2026-09-19` 可固定。
+- **Local Market** 預設只顯示自己所在縣的刊登（Lucknow 有 Imran 與 Pooja 兩人，可以互相看到）；篩選畫面可改成 25 km、100 km 或全國（My country），就能看到其他縣的刊登。
+- **Farmer Circle** 是全域的，自己地區的貼文排最前；有 5 篇貼文有預先翻好的 Hindi。
+- **Ask AI** 需要 `GEMINI_API_KEY`；沒有時回離線清單。會用到會員的地區與作物。
+
+### demo 資料怎麼建立
+
+| 環境 | 論壇 + 帳號 | Today's Farm | Local Market |
+|---|---|---|---|
+| 本機 `forum:dev` | 自動 | —（沒有掛農場）| 自動 |
+| 本機 `farm:dev` | 自動 | 自動 | — |
+| VM | `.env` 設 `SEED_DEMO_DATA=true` 後重啟（production 必須設 `DEMO_USER_PIN`）| 同左，自動 | 手動 `npm run market:seed` |
+
+所有 seed 都可以重複執行，不會重複建立資料；demo 帳號在 Settings 改過的作物不會被覆蓋。
+
+## 8. 部署
 
 - VM 上執行 `deploy/setup.sh`：`git pull --ff-only` → `npm ci --omit=dev` → 重啟 `agrilink.service`；安裝 `agrilink-mandi-sync.timer`（每 30 分鐘）；nginx snippet。
 - **不要直接在 VM 改程式碼**；改 Mac → push → VM pull。
@@ -120,11 +186,30 @@ npm run farm:dev        # Today's Farm
 - 前端改動後，手機端要強制重新整理才會拿到新版（沒有版本號 / cache busting）。
 - CI 只測試，**不自動部署**。
 
-## 8. 已知問題 / 待辦
+### Node 版本
+
+repo 以 **Node 22** 為準：`.nvmrc`、`engines: >=22`、CI 都是 22。VM 目前是 Node 18（2025-04 已停止支援），`setup.sh` 會印出警告。程式在 18 上還能跑，但 `google-translate-api-x` 需要 21 以上（npm 會警告），而且我們只在 22 上測試。
+
+在 VM 上升級（Ubuntu 24.04；用 NodeSource，`node` 會留在 systemd 用的 `/usr/bin/node`，**不要用 nvm**）：
+
+```bash
+node -v                                    # 記下舊版本
+curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
+sudo -E bash /tmp/nodesource_setup.sh
+sudo apt-get install -y nodejs             # 若和 Ubuntu 的 npm 套件衝突：先 sudo apt-get remove -y npm
+node -v                                    # 應為 v22.x
+cd ~/dogbark/backend && npm ci --omit=dev
+sudo systemctl restart agrilink && systemctl status agrilink --no-pager
+curl -s https://<host>/api/ai/capabilities  # 應回 {"ok":true,...}
+```
+
+退回：移除 `/etc/apt/sources.list.d/nodesource.*`，`sudo apt-get update && sudo apt-get install --allow-downgrades nodejs=<舊版本>`，再重啟服務。
+
+## 9. 已知問題 / 待辦
 
 | 問題 | 位置 | 狀態 |
 |---|---|---|
-| VM 是 Node 18，`package.json` 寫 `>=20`，CI 用 22 | VM | 建議升級 VM 到 Node 22 |
+| VM 還是 Node 18；repo 已統一為 22 | VM | 照第 8 節「Node 版本」在 VM 上升級 |
 | 噴藥「最佳時段」寫死 06:00–10:00，畫面看起來像是算出來的 | `services/sprayAssessment.js` | 計畫第 3 項 |
 | Weather 與 Today's Farm 用兩套噴藥規則，同一地點可能結論相反 | `weatherService.advise()` vs `assessSprayConditions()` | 計畫第 3 項 |
 | `server.js` 的功能啟用邏輯沒有測試 | `server.js` | 計畫第 4 項（`createApp`）|
@@ -133,7 +218,7 @@ npm run farm:dev        # Today's Farm
 | 沒有 lint | — | 黑客松後（計畫第 7 項）|
 | 128×160 未逐頁實測 | CSS | 計畫第 6 項 |
 
-## 9. 文件地圖
+## 10. 文件地圖
 
 | 文件 | 狀態 |
 |---|---|
@@ -147,7 +232,7 @@ npm run farm:dev        # Today's Farm
 | `docs/HACKATHON_PREP.md` | 比賽規則與解析度要求 |
 | `devlog/devlog-<名字>.md` | 每人的開發紀錄：時間戳（GMT+8）、發現 / 改動 / 部署與驗證 / 組員注意事項 |
 
-## 10. 給 agent 的規則
+## 11. 給 agent 的規則
 
 1. 改動前先跑 `npm test`；改完要全過，並補測試。能用瀏覽器看的改動，用 240×320 實際看過。
 2. 不要引入框架、bundler、Service Worker、WebSocket、SQLite；不要另接行情 API。

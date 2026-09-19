@@ -40,7 +40,7 @@
 
 **不做 CD**：部署仍是 VM 上手動 `deploy/setup.sh`。自動部署需要把 VM 的 SSH 金鑰放進 GitHub secrets，要全組同意再做。
 
-> 注意：VM 是 Node 18（見 `devlog/devlog-Codex.md`），`package.json` 寫 `engines: >=20`，CI 跑 22。建議 VM 升到 Node 22。
+> Node：repo 已統一為 22（`.nvmrc`、`engines: >=22`，CI 讀 `.nvmrc`）。VM 仍是 Node 18，升級步驟見 `CODEBASE_STATUS.md`「部署 > Node 版本」；`deploy/setup.sh` 在舊版 Node 上會印出警告。
 
 ## 2. 統一錯誤格式 + requestId ✅ 本輪實作
 

@@ -429,3 +429,35 @@
 - 開工前請先讀 `docs/CODEBASE_STATUS.md`；工程改進以 `docs/ENGINEERING_QUALITY_PLAN.md` 為準，舊的 UPGRADE 文件勿照做。
 - VM 是 Node 18，`package.json` 要求 >=20，CI 用 22；只在 Node 22 驗證過，部署前建議把 VM 升到 Node 22。
 - 行情 demo 請用 `9100000002`（北方邦），其他 demo 帳號所在地區沒有同步的行情。
+
+---
+
+## 202609191920 GMT+8 — 北方邦 demo 帳號、有資料的地區整理、Node 22
+
+### 發現／問題
+
+- 即時行情只同步北方邦（`IN-UP`），但 demo 帳號大多在 Bihar、越南、孟加拉，行情畫面顯示「No mandi prices for your area yet」；北方邦只有 Rampur（`IN-UP-01`）有人，Meerut／Agra／Lucknow／Varanasi 四個縣沒有帳號。
+- demo 帳號都沒有設定作物；Today's Farm 的示範農場在 Lucknow，成員卻都不在 Lucknow；`forum:dev` 有掛 Local Market 但沒有 demo 刊登。
+- Node：VM 是 18（2025-04 停止支援），`package.json` 寫 `>=20`，CI 用 22。程式在 18 上還能跑，但 `google-translate-api-x` 要求 21 以上。
+
+### 做了什麼改動
+
+- 新增 5 個北方邦 demo 帳號（PIN 同其他 demo 帳號）：`9100000011` Rakesh（Meerut，wheat／potato）、`…12` Kavita（Agra，potato／onion）、`…13` Imran（Lucknow，rice／tomato）、`…14` Sunita（Varanasi，rice／wheat）、`…15` Pooja（Lucknow，onion／potato）；Asha（`…02`）也設定 rice／wheat。作物只在帳號沒有作物時才設定，在 Settings 改過的不會被覆蓋。
+- 相關內容：論壇 4 篇在地貼文（其中 2 篇已解決）；Local Market 6 筆刊登、2 筆收購、1 筆進行中的出價（Pooja 對 Imran 的番茄）；價格對齊 2026-09-19 的 mandi 行情，避免和 Market Prices 互相矛盾；Imran、Pooja 加入 Green Field Cooperative（Lucknow）當 worker，Imran 明天有一個採番茄任務。
+- `forum:dev` 啟動時一併建立 Local Market demo 資料。
+- Node：`.nvmrc`＝22、`engines: >=22`（含 lockfile），CI 讀 `.nvmrc`；`deploy/setup.sh` 在 VM 的 Node 小於 22 時印出警告。
+- 文件：`docs/CODEBASE_STATUS.md` 新增第 7 節「有資料的地區、選項與 demo 帳號」（地區×行情／天氣對照、作物、每個帳號看得到什麼、各環境怎麼建立 demo 資料），以及「部署 > Node 版本」的 VM 升級與退回步驟。
+
+### 部署與驗證
+
+- 本機 164/164 測試通過（新增：北方邦帳號的地區、作物，以及改過的作物不被 seed 覆蓋）；更新了論壇、市場、農場 seed 的數量斷言。
+- `prices-live`（MANDI_LIVE=1）：6 個北方邦帳號都拿到自己作物的即時行情（source=agmarknet，各 8 個 mandi）與天氣；每人在 Local Market 看到自己縣的刊登，論壇最上面是自己地區的貼文。Imran 的畫面顯示「Offers to Answer (1 new)」。
+- `farm-dev`：Imran 看到 Green Field Cooperative（worker），任務清單有 2026-09-20 的採番茄任務。
+- **VM 尚未部署，也還沒升級 Node。**
+
+### 組員注意事項
+
+- demo 行情請用北方邦帳號（`9100000011`–`15` 或 `02`）；完整對照見 `docs/CODEBASE_STATUS.md` 第 7 節。
+- VM 上 demo 帳號的 PIN 是 VM `.env` 的 `DEMO_USER_PIN`，不一定是 `246810`。新帳號要在 VM 出現：`SEED_DEMO_DATA=true` 後重啟服務（論壇＋農場），Local Market 另外執行 `npm run market:seed`。
+- VM 升級 Node 22 的步驟在 `CODEBASE_STATUS.md`「部署 > Node 版本」；升級會重啟服務，請先和大家約時間。
+- 新增 demo 貼文或刊登時，`tests/forum.test.js`、`permissions.test.js`、`marketSeed.test.js`、`farmOps.test.js` 裡的數量斷言要一起改。
