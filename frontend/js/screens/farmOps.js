@@ -14,7 +14,7 @@ const farmToday = (tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UT
 // Errors go to the shared toast bar; native alert() dialogs are not verified on Cloud Phone keypads.
 let flashTimer=null;
 const flash = (text) => { const t=document.getElementById('toast'); if(!t)return; t.textContent=`⚠ ${text}`; t.hidden=false; clearTimeout(flashTimer); flashTimer=setTimeout(()=>{t.hidden=true;},4000); };
-function openFarm(ctx, f) { farmOps.activeFarmId=f.id; farmOps.activeFarm=f; farmOps.activeDate=new URLSearchParams(location.search).get('demoDate')||farmToday(f.timezone); ctx.router.replace('TodayDashboard'); }
+function openFarm(ctx, f) { farmOps.activeFarmId=f.id; farmOps.activeFarm=f; farmOps.marketIndex=0; farmOps.activeDate=new URLSearchParams(location.search).get('demoDate')||farmToday(f.timezone); ctx.router.replace('TodayDashboard'); }
 const taskRow = (t) => {
   const row=el(`item ops-task-row priority-${t.priority || 'normal'}`); row.dataset.id=t.id;
   const mark=el('ops-task-status', (STATUS[t.status] || t.status || '□').split(' ')[0]);
@@ -44,10 +44,12 @@ const weatherRow = (data) => {
   row.append(el('ops-live-main',main)); if(meta) row.append(el('ops-live-meta',meta));
   return row;
 };
-const marketRow = (m) => {
-  if(!m)return null; const arrow=String(m.trend7d).startsWith('-')?'▼':'▲';
-  const row=el('ops-live-row ops-market');
-  row.append(el('ops-live-main',`📊 ${m.crop.toUpperCase()} ₹${Math.round(m.localPrice)}/qt ${arrow}${m.trend7d}`),
+// One row per farm, for the crops it grows; with several, the row is selectable and Enter shows the next.
+const marketRow = (list) => {
+  if(!list?.length)return null; const i=(farmOps.marketIndex||0)%list.length, m=list[i], many=list.length>1;
+  const arrow=String(m.trend7d).startsWith('-')?'▼':'▲';
+  const row=el(`ops-live-row ops-market${many?' item':''}`); if(many) row.dataset.market='1';
+  row.append(el('ops-live-main',`📊 ${m.crop.toUpperCase()} ₹${Math.round(m.localPrice)}/qt ${arrow}${m.trend7d}${many?` · ${i+1}/${list.length}`:''}`),
     el('ops-live-meta',m.bestNearbyMarket?`${m.bestNearbyMarket}: ${m.netGainPerUnit>=0?'+':''}₹${m.netGainPerUnit??'?'} /qt net · ${m.source}`:`Source: ${m.provider} · ${m.source}`));
   return row;
 };
@@ -91,9 +93,9 @@ function ensureFarm(ctx){ if(!farmOps.activeFarmId){ctx.router.replace('FarmGate
 export const TodayDashboard = asyncScreen({
   name:'TodayDashboard',title:()=>"Today's Farm",softLeft:{label:'Add',handler:(ctx)=>ctx.router.push('FarmTaskCreate')},
   load(ctx){ if(!ensureFarm(ctx)) return Promise.reject(new Error('Choose a farm')); return api.today(farmOps.activeFarmId,farmOps.activeDate); },
-  renderData(data){ const root=el('ops-page'); root.append(el('ops-date-switcher',`${data.farm.name} · ${niceDate(data.date)}`),el('ops-progress',`${data.summary.completed} / ${data.summary.total} complete · ${data.summary.inProgress} active · ${data.summary.blocked} blocked`)); const wr=weatherRow(data),mr=marketRow(data.marketSnapshot);if(wr)root.append(wr);if(mr)root.append(mr);if(data.alerts?.[0])root.append(el('ops-alert',data.alerts[0].message)); section(root,'OVERDUE',data.sections.overdue);section(root,'BLOCKED',data.sections.blocked);section(root,'IN PROGRESS',data.sections.inProgress);section(root,'DUE TODAY',data.sections.dueToday||data.sections.due);section(root,'UNASSIGNED',data.sections.unassigned);const c=data.communityActivity;if(c&&(c.unreadReplies||c.newPostsToday)){const row=el('item ops-community',`🌾 Circle: ${c.unreadReplies} new replies · ${c.newPostsToday} posts`);row.dataset.route='FarmerCircleHome';root.append(row);}section(root,'COMPLETED',data.sections.completedToday||data.sections.completed); if(!root.querySelector('.ops-task-row'))root.append(message('No work scheduled. Press Add.')); root.append(el('ops-task-meta','◄► day · 1 Farms · 2 Calendar · 3 Next 7 days · 4 Mine · 5 Records · 6 Team · 7 Fields')); return root; },
+  renderData(data){ const root=el('ops-page'); root.append(el('ops-date-switcher',`${data.farm.name} · ${niceDate(data.date)}`),el('ops-progress',`${data.summary.completed} / ${data.summary.total} complete · ${data.summary.inProgress} active · ${data.summary.blocked} blocked`)); const wr=weatherRow(data),mr=marketRow(data.marketSnapshots||(data.marketSnapshot?[data.marketSnapshot]:[]));if(wr)root.append(wr);if(mr)root.append(mr);if(data.alerts?.[0])root.append(el('ops-alert',data.alerts[0].message)); section(root,'OVERDUE',data.sections.overdue);section(root,'BLOCKED',data.sections.blocked);section(root,'IN PROGRESS',data.sections.inProgress);section(root,'DUE TODAY',data.sections.dueToday||data.sections.due);section(root,'UNASSIGNED',data.sections.unassigned);const c=data.communityActivity;if(c&&(c.unreadReplies||c.newPostsToday)){const row=el('item ops-community',`🌾 Circle: ${c.unreadReplies} new replies · ${c.newPostsToday} posts`);row.dataset.route='FarmerCircleHome';root.append(row);}section(root,'COMPLETED',data.sections.completedToday||data.sections.completed); if(!root.querySelector('.ops-task-row'))root.append(message('No work scheduled. Press Add.')); root.append(el('ops-task-meta','◄► day · 1 Farms · 2 Calendar · 3 Next 7 days · 4 Mine · 5 Records · 6 Team · 7 Fields')); return root; },
   onKey(action,ctx){ if(action==='NUM_1'){ctx.router.replace('FarmGate');return true;} const map={NUM_2:'FarmCalendar',NUM_3:'FarmUpcoming',NUM_4:'MyFarmTasks',NUM_5:'FarmRecords',NUM_6:'FarmTeam',NUM_7:'FarmFields'}; if(map[action]){ctx.router.push(map[action]);return true;} if(action==='LEFT'||action==='RIGHT'){farmOps.activeDate=dateShift(farmOps.activeDate,action==='LEFT'?-1:1);ctx.router.replace('TodayDashboard');return true;} },
-  onEnter(node,ctx){if(node?.dataset.route)return ctx.router.push(node.dataset.route);const id=node?.dataset.id;if(id)ctx.router.push('FarmTaskDetail',{id});},
+  onEnter(node,ctx){if(node?.dataset.market){farmOps.marketIndex=(farmOps.marketIndex||0)+1;return ctx.rerender();}if(node?.dataset.route)return ctx.router.push(node.dataset.route);const id=node?.dataset.id;if(id)ctx.router.push('FarmTaskDetail',{id});},
 });
 
 export const FarmUpcoming = asyncScreen({ name:'FarmUpcoming',title:'Upcoming',softLeft:{label:'Add',handler:(ctx)=>ctx.router.push('FarmTaskCreate')},

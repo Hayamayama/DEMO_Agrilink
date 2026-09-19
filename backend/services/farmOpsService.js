@@ -116,20 +116,33 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
       else section.due.push(t);
     }
     const todays = rows.filter((t) => t.localDate === day);
+    const crops = await farmCrops(farm, user);
     const [weather, prices, communityActivity] = await Promise.all([
       weatherForFarm(farm),
-      farmPriceService?.getFarmPrices(farm, 'rice').catch(() => null) || null,
+      Promise.all(crops.map((crop) => (farmPriceService ? farmPriceService.getFarmPrices(farm, crop).catch(() => null) : null))),
       communityFor(user, day),
     ]);
+    const marketSnapshots = prices.map(marketSnapshot).filter(Boolean);
     const sprayAssessment = todays.some((t) => ['spraying','fertilizer'].includes(t.type)) && weather ? assessSprayConditions(weather, { date: day }) : null;
     return { farm: { id: farm.id, name: farm.name, timezone: farm.timezone, role: farm.role }, date: day,
-      weather, weatherDay: dayWeather(weather, day), sprayAssessment, marketSnapshot: marketSnapshot(prices), communityActivity, alerts: [],
+      weather, weatherDay: dayWeather(weather, day), sprayAssessment, marketSnapshot: marketSnapshots[0] || null, marketSnapshots, communityActivity, alerts: [],
       sections: { ...section, dueToday: section.due, completedToday: section.completed },
       summary: { total: todays.filter((t) => !['cancelled','skipped'].includes(t.status)).length,
         completed: todays.filter((t) => ['completed','verified'].includes(t.status)).length,
         inProgress: todays.filter((t) => t.status === 'in_progress').length,
         blocked: todays.filter((t) => t.status === 'blocked').length,
         pending: todays.filter((t) => !['completed','verified','cancelled','skipped','in_progress','blocked'].includes(t.status)).length } };
+  }
+
+  // The crops this farm grows (its planned and active crop cycles, earliest planted first); a farm
+  // with no cycles yet uses the member's own crops, and rice when there are none. At most three.
+  async function farmCrops(farm, user) {
+    const r = await pool.query(`SELECT crop_code FROM app.crop_cycles WHERE farm_id=$1 AND status IN ('planned','active')
+      GROUP BY crop_code ORDER BY min(planting_date) NULLS LAST, crop_code`, [farm.id]);
+    const list = r.rows.map((x) => x.crop_code);
+    if (!list.length) list.push(...(user.cropCodes || []));
+    if (!list.length) list.push('rice');
+    return [...new Set(list)].slice(0, 3);
   }
 
   async function weatherForFarm(farm) {

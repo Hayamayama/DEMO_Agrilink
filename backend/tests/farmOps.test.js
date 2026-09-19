@@ -219,3 +219,30 @@ test('work still in progress from an earlier day is "in progress", not overdue',
     assert.ok(next.sections.overdue.some((x) => x.title === 'Inspect pump'), 'not started is still overdue');
   } finally { await t.close(); }
 });
+
+test('the market row covers the crops the farm grows, else the member\'s crops', async () => {
+  const t = await setup();
+  try {
+    const asked = [];
+    const farmPriceService = { async getFarmPrices(farm, crop) {
+      asked.push(crop);
+      return crop === 'onion' ? null : { crop, provider: 'agmarknet', source: 'live', stale: false, fetchedAt: 'now',
+        localMarket: { modalPrice: 2000 }, nearbyMarkets: [], sevenDayTrend: [1900, 2000] };
+    } };
+    const ops = createFarmOpsService(t.pool, { farmPriceService });
+    const demo = await ops.overview(t.owner, FARM_DEMO_ID, '2026-09-19');
+    assert.deepEqual(demo.marketSnapshots.map((m) => m.crop), ['rice', 'tomato'], 'from the crop cycles, earliest planted first');
+    assert.equal(demo.marketSnapshot.crop, 'rice');
+
+    const regionId = (await t.pool.query("SELECT id FROM app.regions WHERE code='IN-BR'")).rows[0].id;
+    const { user } = await t.auth.signup({ phone: '9199999997', pin: '135790', displayName: 'No Cycles', village: 'Hajipur', regionId });
+    const farm = await ops.createFarm(user, { name: 'Bare farm' });
+    asked.length = 0;
+    const bare = await ops.overview({ ...user, cropCodes: ['onion', 'wheat'] }, farm.id, '2026-09-19');
+    assert.deepEqual(asked, ['onion', 'wheat']);
+    assert.deepEqual(bare.marketSnapshots.map((m) => m.crop), ['wheat'], 'crops without prices are left out');
+    asked.length = 0;
+    await ops.overview({ ...user, cropCodes: [] }, farm.id, '2026-09-19');
+    assert.deepEqual(asked, ['rice']);
+  } finally { await t.close(); }
+});
