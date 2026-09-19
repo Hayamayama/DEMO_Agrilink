@@ -1,20 +1,8 @@
 import express, { Router } from 'express';
 import { sessionFromRequest } from './auth.js';
 import { AppError, asyncHandler } from '../middleware/errors.js';
+import { sameOriginWrites } from '../middleware/sameOrigin.js';
 import { createFarmOpsService } from '../services/farmOpsService.js';
-
-function sameOriginWrites(req, _res, next) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  const origin = req.headers.origin;
-  if (origin) {
-    let host;
-    try { host = new URL(origin).host; } catch { /* invalid */ }
-    if (!host || ![req.headers.host, req.headers['x-forwarded-host']].filter(Boolean).includes(host)) {
-      return next(new AppError('FORBIDDEN', 'Cross-site request blocked.'));
-    }
-  }
-  next();
-}
 
 export function createFarmOpsRouter({ pool, auth, farmPriceService, weatherGetter }) {
   const router = Router();

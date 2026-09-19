@@ -18,7 +18,8 @@ import { createForumRouter } from './routes/forum.js';
 import { createMarketRouter } from './routes/market.js';
 import { ensureForumReference } from './db/forumReference.js';
 import { seedDemo } from './db/forumSeed.js';
-import { forumErrorHandler } from './middleware/errors.js';
+import { errorHandler, unavailable, AppError } from './middleware/errors.js';
+import { requestId } from './middleware/requestId.js';
 import { createFarmOpsRouter } from './routes/farmOps.js';
 import { seedFarmOps } from './db/farmOpsSeed.js';
 
@@ -27,6 +28,7 @@ const app = express();
 // nginx on the same host sets X-Forwarded-For; trusting only loopback lets the
 // AI rate limiter key on the real client IP without letting clients spoof it.
 app.set('trust proxy', 'loopback');
+app.use(requestId);
 
 // Content Security Policy: no inline/remote scripts, no remote images. Media is
 // uploaded to our own origin only; the Gemini key and calls stay server-side.
@@ -48,7 +50,7 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '32kb' })); // media goes through multipart, not JSON
 
 // Postgres when DATABASE_URL is set, otherwise the in-memory demo data (flagged sample).
-const forumUnavailable = (_req, res) => res.status(503).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Farmer Circle is not available right now.', field: null, retryable: true } });
+const forumUnavailable = unavailable('Farmer Circle is not available right now.');
 const pool = createPool();
 console.log(pool ? 'prices: using Postgres' : 'prices: using in-memory seed data');
 const prices = createPriceService(pool ? pgRepo(pool) : memoryRepo());
@@ -88,7 +90,7 @@ if (pool) {
       console.log('market: Local Market enabled');
     } catch (err) {
       console.warn(`market: disabled (${err.message}) - apply migration 006 with npm run db:migrate`);
-      app.use('/api/market', (_req, res) => res.status(503).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Local Market is not available right now.', field: null, retryable: true } }));
+      app.use('/api/market', unavailable('Local Market is not available right now.'));
     }
     try {
       await pool.query('SELECT 1 FROM app.farms LIMIT 0');
@@ -98,24 +100,22 @@ if (pool) {
       console.log("farm ops: Today's Farm enabled");
     } catch (err) {
       console.warn(`farm ops: disabled (${err.message}) - apply migration 007 with npm run db:migrate`);
-      app.use('/api/farms', forumUnavailable);
+      app.use('/api/farms', unavailable("Today's Farm is not available right now."));
     }
   } catch (err) {
     // Prices and offline AI are still useful on a local demo, but identity must
     // never silently use an insecure fallback when its secret is absent.
     console.warn(`auth: disabled (${err.message})`);
     app.use('/api/forum', forumUnavailable);
-    app.use(['/api/auth', '/api/admin'], (_req, res) => res.status(503).json({ ok: false, error: { code: 'AUTH_UNAVAILABLE', message: 'Sign-in is not configured on this server.' } }));
+    app.use(['/api/auth', '/api/admin'], unavailable('Sign-in is not configured on this server.', 'AUTH_UNAVAILABLE', false));
   }
 }
 if (!pool) app.use('/api/forum', forumUnavailable);
 console.log(process.env.GEMINI_API_KEY ? 'ai: gemini configured' : 'ai: no GEMINI_API_KEY - Ask AI serves offline fallbacks');
+// Unknown API paths answer in the error envelope, not Express's HTML "Cannot GET".
+app.use('/api', (_req, _res, next) => next(new AppError('NOT_FOUND', 'Not found.')));
 app.use(express.static(path.join(here, '..', 'frontend')));
-app.use(forumErrorHandler);
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ ok: false, error: { code: 'INTERNAL', message: 'Something went wrong. Please try again.' } });
-});
+app.use(errorHandler);
 
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => console.log(`AgriLink listening on :${port}`));

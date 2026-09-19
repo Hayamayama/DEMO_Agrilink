@@ -16,6 +16,8 @@ import { ensureForumReference } from '../db/forumReference.js';
 import { seedDemo } from '../db/forumSeed.js';
 import { createMarketRouter } from '../routes/market.js';
 import { pricesRouter } from '../routes/prices.js';
+import weather from '../routes/weather.js';
+import { requestId } from '../middleware/requestId.js';
 import { createPriceService } from '../services/priceService.js';
 import { pgRepo } from '../services/priceRepo.js';
 import { syncMandi, createGeocoder } from '../db/syncMandi.js';
@@ -30,11 +32,13 @@ const auth = createAuthService(pool, { AUTH_LOOKUP_SECRET: 'dev-only-secret-dev-
 await seedDemo(pool, { auth, pin: '246810' });
 
 const app = express();
+app.use(requestId);
 app.use(express.json({ limit: '32kb' }));
 app.use('/api/auth', authRouter({ auth, pool }));
 app.use('/api/forum', createForumRouter({ pool, auth }).router);
 app.use('/api/market', createMarketRouter({ pool, auth, env: { AUTH_LOOKUP_SECRET: 'dev-only-secret-dev-only-secret-dev' } }).router);
 app.use('/api/prices', pricesRouter(createPriceService(pgRepo(pool))));
+app.use('/api/weather', weather);
 app.use(forumErrorHandler);
 if (process.env.MANDI_LIVE === '1') {
   syncMandi({ pool, client: createMandiClient({ log: console.log }), geocode: createGeocoder() })

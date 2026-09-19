@@ -1,23 +1,12 @@
 import express, { Router } from 'express';
 import { sessionFromRequest } from './auth.js';
 import { AppError, asyncHandler } from '../middleware/errors.js';
+import { sameOriginWrites } from '../middleware/sameOrigin.js';
 import { limitByUser, createLimiter } from '../middleware/rateLimits.js';
 import { createMarketService } from '../services/marketService.js';
 
 // Local Market API. Every route needs a signed-in member: listings are matched by the poster's
 // profile region, never by request IP. Cookie identity comes from routes/auth.js.
-function sameOriginWrites(req, _res, next) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  const origin = req.headers.origin;
-  if (origin) {
-    let host = null;
-    try { host = new URL(origin).host; } catch { /* fallthrough */ }
-    const allowed = [req.headers.host, req.headers['x-forwarded-host']].filter(Boolean);
-    if (!host || !allowed.includes(host)) return next(new AppError('FORBIDDEN', 'Cross-site request blocked.'));
-  }
-  next();
-}
-
 export function createMarketRouter({ pool, auth, env = process.env, config }) {
   const limiter = createLimiter();
   const market = createMarketService({ pool, limiter, env, config });

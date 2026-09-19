@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { synthesize as defaultSynthesize, TtsError, TTS_MAX_CHARS, isConfigured } from '../services/ttsService.js';
 import { memberOnly, quotaLimits } from '../middleware/memberAccess.js';
+import { errorBody } from '../middleware/errors.js';
 
 // Per signed-in member (Cloud Phone users share one egress IP), plus a server-wide daily cap:
 // the TTS model has a small quota and shares GEMINI_API_KEY with Ask AI.
@@ -37,10 +38,9 @@ function sendError(res, err) {
   const code = err instanceof TtsError ? err.code : 'INTERNAL_ERROR';
   if (code === 'CANCELLED') return;
   if (!(err instanceof TtsError)) console.error('tts route error:', err.message);
-  res.status(STATUS[code] || 500).json({
-    ok: false,
-    error: { code, message: err instanceof TtsError ? err.message : 'Something went wrong.', retryable: Boolean(err.retryable) },
-  });
+  res.status(STATUS[code] || 500).json(errorBody(res.req, {
+    code, message: err instanceof TtsError ? err.message : 'Something went wrong.', retryable: Boolean(err.retryable),
+  }));
 }
 
 export function ttsRouter({ auth, synthesize = defaultSynthesize } = {}) {
