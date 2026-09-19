@@ -84,6 +84,12 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
         VALUES ($1,$2,$3,'seeded',$4,'{"demo":true}') ON CONFLICT(id) DO UPDATE SET to_status=EXCLUDED.to_status,data=EXCLUDED.data`,
       [id(`event-${key}`),idValue,owner.user_id,status]);
     }
+    // Remove rows produced by the earlier minimal demo seed. The IDs are
+    // deterministic and demo-only; user-created rows are never matched.
+    await client.query('DELETE FROM app.farm_records WHERE id=$1', [id('record-records')]);
+    await client.query('DELETE FROM app.farm_tasks WHERE id=ANY($1::uuid[])', [[taskId('drain'),taskId('harvest')]]);
+    await client.query('DELETE FROM app.crop_cycles WHERE id=ANY($1::uuid[])', [[id('rice-cycle'),id('veg-cycle')]]);
+    await client.query('DELETE FROM app.farm_task_templates WHERE id=$1', [id('rice-template')]);
     for (const [key,labels] of [['leaf',['Check lower leaves','Check leaf underside','Record spread level']],['equipment-weekly',['Check guards and covers','Check fuel or charge','Record unusual noise']]]) {
       for (const [n,label] of labels.entries()) await client.query(`INSERT INTO app.farm_task_checklist_items(id,task_id,label,sort_order)
         VALUES ($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET label=EXCLUDED.label,sort_order=EXCLUDED.sort_order`, [id(`${key}-check-${n}`),taskId(key),label,n]);
