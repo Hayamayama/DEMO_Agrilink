@@ -175,67 +175,42 @@ export function createPriceService(repo) {
   return { getPrices, getNetProfit, getCrops };
 }
 
-const MARKET_DISTANCE_FROM_LUCKNOW = new Map([
-  ['Lucknow', 0], ['Barabanki', 30], ['Unnao', 65], ['Kanpur', 90], ['Sitapur', 95],
-  ['Ayodhya', 135], ['Bareilly', 250], ['Varanasi', 315], ['Gorakhpur', 270], ['Agra', 335],
-]);
-
-const marketDistance = (row) => {
-  for (const [place, km] of MARKET_DISTANCE_FROM_LUCKNOW) {
-    if (`${row.market} ${row.district}`.toLowerCase().includes(place.toLowerCase())) return km;
-  }
-  return null;
-};
 const pct = (series) => series.length > 1 && series[0] ? Math.round(((series.at(-1) - series[0]) / series[0]) * 1000) / 10 : 0;
 
-// Farm-scoped Agmarknet adapter. The older createPriceService above remains the
-// compatibility layer for /api/prices and imported CEDA data.
-export function createFarmPriceService({ provider, cache, now = () => new Date() }) {
+/**
+ * Today's Farm prices, read from the same synced Agmarknet data as Market Prices (one source, the
+ * same numbers on both screens): the mandi nearest the farm, the next ones with the gain of taking
+ * the crop there instead (both trips from the farm), and the home mandi's recent prices. When the
+ * farm's area has no synced prices, the latest stored snapshot (the demo seed) is returned as stale.
+ */
+export function createFarmPriceService({ prices, cache, now = () => new Date() }) {
   async function live(farm, crop) {
-    const state = farm.stateName || 'Uttar Pradesh';
-    const rows = await provider.getPrices(state, crop[0].toUpperCase() + crop.slice(1));
-    if (!rows.length) throw new Error('No mandi prices returned');
-    const dated = rows.sort((a, b) => String(b.arrivalDate).localeCompare(String(a.arrivalDate)));
-    const latestDate = dated[0].arrivalDate;
-    let latest = dated.filter((r) => r.arrivalDate === latestDate);
-    if (latest.some((r) => String(r.variety).toLowerCase() === 'common')) latest = latest.filter((r) => String(r.variety).toLowerCase() === 'common');
-    latest = [...new Map(latest.map((r) => [r.market, r])).values()];
-    latest.forEach((r) => { r.distanceKm = marketDistance(r); });
-    latest.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999) || a.market.localeCompare(b.market));
-    const local = latest.find((r) => /lucknow/i.test(`${r.market} ${r.district}`)) || latest[0];
-    const nearby = latest.filter((r) => r !== local && r.district !== local.district).slice(0, 5).map((r) => {
-      const distanceKm = r.distanceKm;
-      const transportCostPerQt = distanceKm == null ? null : Math.round(distanceKm * TRANSPORT_RS_PER_QT_KM);
-      return { name: r.market, district: r.district, minPrice: r.minPrice, maxPrice: r.maxPrice,
-        modalPrice: r.modalPrice, distanceKm, transportCostPerQt,
-        netGainPerUnit: transportCostPerQt == null ? null : Math.round((r.modalPrice - local.modalPrice) - transportCostPerQt) };
+    const lat = farm.latitude == null ? undefined : Number(farm.latitude);
+    const lng = farm.longitude == null ? undefined : Number(farm.longitude);
+    const data = await prices.getPrices({ crop, region: farm.region_code || 'IN-UP', lat, lng });
+    if (!data) return null;
+    const [home, ...others] = data.markets;
+    const here = lat != null && lng != null ? { lat, lng } : null;
+    const nearby = others.slice(0, 5).map((m) => {
+      const n = netProfit({ from: home, to: m, qty: 1, here });
+      return { name: m.name, district: null, minPrice: null, maxPrice: null, modalPrice: m.price, date: m.date,
+        distanceKm: m.distance_km, transportCostPerQt: n.transport_per_qt,
+        netGainPerUnit: n.transport_known ? n.gain_per_qt : null };
     });
-    let trend = [local.modalPrice];
-    try {
-      const history = await provider.getHistory(state, crop[0].toUpperCase() + crop.slice(1), local.market);
-      const sameVariety = history.filter((r) => !local.variety || r.variety === local.variety);
-      const values = sameVariety.sort((a,b)=>String(a.arrivalDate).localeCompare(String(b.arrivalDate))).map((r) => Number(r.modalPrice)).filter(Number.isFinite).slice(-7);
-      if (values.length) trend = values;
-    } catch { /* current government price remains useful without history */ }
-    const fetchedAt = now();
-    const payload = { farmId: farm.id, provider: 'agmarknet', crop, currency: 'INR', unit: 'quintal',
-      date: latestDate, source: 'live', stale: false, fetchedAt: fetchedAt.toISOString(),
-      localMarket: { name: local.market, district: local.district, minPrice: local.minPrice, maxPrice: local.maxPrice,
-        modalPrice: local.modalPrice, isLocal: true }, nearbyMarkets: nearby, sevenDayTrend: trend };
-    await cache.save({ farmId: farm.id, crop, stateName: state, payload, fetchedAt,
-      expiresAt: new Date(fetchedAt.getTime() + 60 * 60 * 1000) });
-    return payload;
+    return { farmId: farm.id, provider: 'agmarknet', crop, currency: data.currency, unit: data.unit,
+      date: data.date, source: data.sample ? 'sample' : 'live', stale: false, fetchedAt: now().toISOString(),
+      localMarket: { name: home.name, district: null, minPrice: null, maxPrice: null, modalPrice: home.price,
+        distanceKm: data.home_from_you_km, isLocal: true },
+      nearbyMarkets: nearby, sevenDayTrend: home.trend };
   }
 
   async function getFarmPrices(farm, crop = 'rice') {
-    const hit = await cache.fresh(farm.id, crop, now());
-    if (hit && hit.source !== 'demo') return { ...hit, source: 'cache', stale: false };
-    try { return await live(farm, crop); }
-    catch (error) {
-      const fallback = await cache.latest(farm.id, crop);
-      if (fallback) return { ...fallback, source: fallback.source === 'demo' ? 'demo' : 'cache', stale: true };
-      return null;
-    }
+    try {
+      const out = await live(farm, crop);
+      if (out) return out;
+    } catch { /* fall back to the stored snapshot below */ }
+    const fallback = await cache?.latest(farm.id, crop);
+    return fallback ? { ...fallback, source: fallback.source === 'demo' ? 'demo' : 'cache', stale: true } : null;
   }
   return { getFarmPrices };
 }

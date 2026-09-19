@@ -116,33 +116,39 @@ test('price change and the analysis ignore prices older than the recent window',
   assert.equal('recommendation' in d.analysis, false);
 });
 
-test('farm prices normalize live rows, persist them, and return factual comparison', async () => {
-  let saved;
-  const cache = { fresh: async()=>null, latest:async()=>null, save:async(x)=>{saved=x;} };
-  const provider = {
-    getPrices: async()=>[
-      {market:'Lucknow APMC',district:'Lucknow',variety:'Common',minPrice:2100,maxPrice:2250,modalPrice:2180,arrivalDate:'2026-09-19'},
-      {market:'Kanpur APMC',district:'Kanpur',variety:'Common',minPrice:2200,maxPrice:2350,modalPrice:2280,arrivalDate:'2026-09-19'},
-    ],
-    getHistory: async()=>[2100,2180].map((modalPrice)=>({modalPrice,variety:'Common',arrivalDate:'2026-09-18'})),
-  };
-  const service=createFarmPriceService({provider,cache,now:()=>new Date('2026-09-19T03:34:12Z')});
-  const out=await service.getFarmPrices({id:'farm-1',stateName:'Uttar Pradesh'},'rice');
-  assert.equal(out.source,'live');
-  assert.equal(out.localMarket.name,'Lucknow APMC');
-  assert.equal(saved.payload.provider,'agmarknet');
-  const summary=marketSnapshot(out);
-  assert.equal(summary.bestNearbyMarket,'Kanpur APMC');
-  assert.equal(summary.netGainPerUnit,-35);
-  assert.equal(summary.trend7d,'+3.8%');
-  assert.equal('recommendation' in summary,false);
+test('farm prices come from the synced mandi data, measured from the farm', async () => {
+  const row = (market_code, market_name, lat, lng, modal, date = '2026-09-19') => ({ market_code, market_name, lat, lng, date, modal,
+    variety: 'Common', currency: 'INR', unit: 'quintal', source: 'agmarknet', sample: false });
+  const prices = createPriceService({
+    async history(_crop, region) {
+      if (region !== 'IN-UP') return [];
+      return [row('lko', 'Lucknow', 26.85, 80.95, 2100, '2026-09-18'), row('lko', 'Lucknow', 26.85, 80.95, 2180),
+        row('bbk', 'Barabanki', 26.93, 81.19, 2260), row('knp', 'Kanpur', 26.45, 80.33, 2400)];
+    },
+    async crops() { return []; },
+  });
+  const cache = { latest: async () => { throw new Error('not used when live data exists'); } };
+  const farm = { id: 'farm-1', region_code: 'IN-UP-LKO', latitude: '26.84670', longitude: '80.94620' };
+  const out = await createFarmPriceService({ prices, cache, now: () => new Date('2026-09-19T03:34:12Z') }).getFarmPrices(farm, 'rice');
+  assert.equal(out.source, 'live');
+  assert.equal(out.localMarket.name, 'Lucknow');
+  assert.deepEqual(out.sevenDayTrend, [2100, 2180]);
+  assert.deepEqual(out.nearbyMarkets.map((m) => m.name), ['Barabanki', 'Kanpur']);
+  // same formula as Market Prices: (price there - trip there) - (local price - trip to local)
+  const kanpur = out.nearbyMarkets[1];
+  const n = netProfit({ from: { name: 'Lucknow', price: 2180, lat: 26.85, lng: 80.95 }, to: { name: 'Kanpur', price: 2400, lat: 26.45, lng: 80.33 }, qty: 1, here: { lat: 26.8467, lng: 80.9462 } });
+  assert.equal(kanpur.netGainPerUnit, n.gain_per_qt);
+  const summary = marketSnapshot(out);
+  assert.equal(summary.bestNearbyMarket, out.nearbyMarkets.slice().sort((a, b) => b.netGainPerUnit - a.netGainPerUnit)[0].name);
+  assert.equal(summary.trend7d, '+3.8%');
+  assert.equal('recommendation' in summary, false);
 });
 
-test('farm prices label persisted fallback as stale cache', async () => {
-  const cached={farmId:'farm-1',crop:'rice',provider:'agmarknet',source:'live',localMarket:{modalPrice:2000},nearbyMarkets:[],sevenDayTrend:[1900,2000]};
-  const service=createFarmPriceService({provider:{getPrices:async()=>{throw new Error('down');}},cache:{fresh:async()=>null,latest:async()=>cached}});
-  const out=await service.getFarmPrices({id:'farm-1'},'rice');
-  assert.equal(out.source,'cache'); assert.equal(out.stale,true);
+test('a farm without synced prices gets its stored snapshot, marked stale', async () => {
+  const prices = createPriceService({ async history() { return []; }, async crops() { return []; } });
+  const cached = { farmId: 'farm-1', crop: 'rice', provider: 'agmarknet', source: 'demo', localMarket: { modalPrice: 2000 }, nearbyMarkets: [], sevenDayTrend: [1900, 2000] };
+  const out = await createFarmPriceService({ prices, cache: { latest: async () => cached } }).getFarmPrices({ id: 'farm-1', region_code: 'VN-AG' }, 'rice');
+  assert.deepEqual([out.source, out.stale], ['demo', true]);
 });
 
 test('with the member\'s location both trips start from the member', () => {

@@ -1,5 +1,6 @@
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { sessionFromRequest } from '../routes/auth.js';
+import { errorBody } from './errors.js';
 
 // Gemini-backed routes (Ask AI, TTS) spend a shared API quota, so only signed-in members may call
 // them. Without a database there is no one to sign in: the local offline demo stays open.
@@ -8,7 +9,7 @@ export function memberOnly(auth) {
   return async (req, res, next) => {
     try {
       const user = await auth.session(sessionFromRequest(req));
-      if (!user) return res.status(401).json({ ok: false, error: { code: 'AUTH_REQUIRED', message: 'Sign in to continue.', retryable: false } });
+      if (!user) return res.status(401).json(errorBody(req, { code: 'AUTH_REQUIRED', message: 'Sign in to continue.' }));
       req.user = user;
       next();
     } catch (err) { next(err); }
@@ -25,12 +26,14 @@ export const memberKey = (req) => (req.user?.id ? `u:${req.user.id}` : `ip:${ipK
  */
 export function quotaLimits({ perMinute, perDay, globalPerDay, payload }) {
   const day = 24 * 60 * 60_000;
+  // The route's own error body (its codes), stamped with this request's id.
+  const message = (text) => (req) => { const body = payload(text); return { ...body, error: { ...body.error, requestId: req.requestId ?? null } }; };
   return [
     rateLimit({ windowMs: 60_000, limit: perMinute, keyGenerator: memberKey, standardHeaders: true, legacyHeaders: false,
-      message: payload('Too many requests. Wait a minute.') }),
+      message: message('Too many requests. Wait a minute.') }),
     rateLimit({ windowMs: day, limit: perDay, keyGenerator: memberKey, standardHeaders: false, legacyHeaders: false,
-      message: payload('Your daily limit is reached. Try again tomorrow.') }),
+      message: message('Your daily limit is reached. Try again tomorrow.') }),
     rateLimit({ windowMs: day, limit: globalPerDay, keyGenerator: () => 'all', standardHeaders: false, legacyHeaders: false,
-      message: payload('Daily limit for everyone reached. Try again tomorrow.') }),
+      message: message('Daily limit for everyone reached. Try again tomorrow.') }),
   ];
 }

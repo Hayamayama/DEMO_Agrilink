@@ -10,9 +10,12 @@ export const FARM_DEMO_ID = id('green-field');
 export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2026-09-19' } = {}) {
   const members = (await pool.query(`SELECT s.demo_key,p.user_id,p.display_name FROM app.forum_user_state s
     JOIN app.user_profiles p ON p.user_id=s.user_id
-    WHERE s.demo_key IN ('10000001','10000002','10000003','10000004','10000005') ORDER BY s.demo_key`)).rows;
-  if (members.length < 5) throw new Error('Seed Farmer Circle demo users before Today\'s Farm.');
+    WHERE s.demo_key IN ('10000001','10000002','10000003','10000004','10000005','10000013','10000015') ORDER BY s.demo_key`)).rows;
   const byKey = new Map(members.map((m) => [m.demo_key, m]));
+  if (!['10000001','10000002','10000003','10000004','10000005'].every((k) => byKey.has(k))) throw new Error('Seed Farmer Circle demo users before Today\'s Farm.');
+  // The farm is in Lucknow: its two Lucknow members (absent on databases seeded before they existed).
+  const lucknow = ['10000013', '10000015'].map((k) => byKey.get(k)).filter(Boolean);
+  const imran = byKey.get('10000013');
   const owner = byKey.get('10000001');
   const asha = byKey.get('10000002');
   const arjun = byKey.get('10000003');
@@ -30,10 +33,10 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
   try {
     await client.query('BEGIN');
     await client.query(`INSERT INTO app.farms(id,name,owner_user_id,country_code,region_code,timezone,latitude,longitude)
-      VALUES ($1,'Green Field Cooperative',$2,'IN','IN-UP-01','Asia/Kolkata',26.84670,80.94620)
+      VALUES ($1,'Green Field Cooperative',$2,'IN','IN-UP-LKO','Asia/Kolkata',26.84670,80.94620)
       ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,owner_user_id=EXCLUDED.owner_user_id,country_code=EXCLUDED.country_code,
         region_code=EXCLUDED.region_code,timezone=EXCLUDED.timezone,latitude=EXCLUDED.latitude,longitude=EXCLUDED.longitude,updated_at=now()`, [farmId, owner.user_id]);
-    for (const [m, role] of [[owner,'owner'],[manager,'manager'],[asha,'worker'],[arjun,'worker'],[viewer,'viewer']]) {
+    for (const [m, role] of [[owner,'owner'],[manager,'manager'],[asha,'worker'],[arjun,'worker'],[viewer,'viewer'],...lucknow.map((l) => [l,'worker'])]) {
       await client.query(`INSERT INTO app.farm_members(farm_id,user_id,role,status,accepted_at) VALUES ($1,$2,$3,'active',now())
         ON CONFLICT(farm_id,user_id) DO UPDATE SET role=EXCLUDED.role,status='active',removed_at=NULL`, [farmId, m.user_id, role]);
     }
@@ -69,6 +72,7 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
       ['fertilizer-review','Fertilizer review','fertilizer','normal','scheduled',6,fieldB,riceB,null,45,9,10,false,null],
       ['equipment-weekly','Weekly equipment inspection','machinery','normal','assigned',8,null,null,asha.user_id,60,9,10,false,null],
       ['verify-drainage','Drainage repair review','machinery','high','completed',-1,fieldB,riceB,arjun.user_id,55,13,14,true,null],
+      ...(imran ? [['tomato-pick','Pick tomatoes for the Lucknow buyer','harvest','normal','assigned',1,vegetable,tomato,imran.user_id,90,7,9,false,null]] : []),
     ];
     for (const [key,title,type,priority,status,offset,field,cycle,assignee,minutes,start,end,verification,blockedReason] of tasks) {
       const idValue=taskId(key); const day=date(offset);
@@ -166,7 +170,7 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
       ON CONFLICT(id) DO UPDATE SET user_id=EXCLUDED.user_id,type=EXCLUDED.type,title=EXCLUDED.title,body=EXCLUDED.body,task_id=EXCLUDED.task_id`,
     [id(`notification-${key}`),farmId,userId,type,title,body,linkedTask,`demo:${key}`]);
     await client.query('COMMIT');
-    return {farmId,demoDate,members:5+(testAdmin?1:0),testAdminOwner:Boolean(testAdmin),fields:fields.length,cropCycles:cycles.length,tasks:tasks.length,records:records.length,templates:templates.length,notifications:notifications.length,priceSnapshots:priceSeeds.length};
+    return {farmId,demoDate,members:5+lucknow.length+(testAdmin?1:0),testAdminOwner:Boolean(testAdmin),fields:fields.length,cropCycles:cycles.length,tasks:tasks.length,records:records.length,templates:templates.length,notifications:notifications.length,priceSnapshots:priceSeeds.length};
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }
 

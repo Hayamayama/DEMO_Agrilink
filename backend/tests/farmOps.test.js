@@ -34,7 +34,7 @@ test('demo seed is complete and idempotent', async () => {
   try {
     const second = await seedFarmOps(t.pool, { demoDate: '2026-09-19' });
     assert.deepEqual({ members: second.members, fields: second.fields, cropCycles: second.cropCycles, tasks: second.tasks, records: second.records },
-      { members: 5, fields: 3, cropCycles: 3, tasks: 13, records: 6 });
+      { members: 7, fields: 3, cropCycles: 3, tasks: 14, records: 6 });
     const counts = (await t.pool.query(`SELECT
       (SELECT count(*)::int FROM app.farm_members WHERE farm_id=$1 AND status='active') members,
       (SELECT count(*)::int FROM app.farm_fields WHERE farm_id=$1) fields,
@@ -45,7 +45,7 @@ test('demo seed is complete and idempotent', async () => {
       (SELECT count(*)::int FROM app.farm_notifications WHERE farm_id=$1) notifications,
       (SELECT count(*)::int FROM app.price_snapshots WHERE farm_id=$1) prices,
       (SELECT count(*)::int FROM app.farm_weather_snapshots WHERE farm_id=$1) weather`, [FARM_DEMO_ID])).rows[0];
-    assert.deepEqual(counts, { members: 5, fields: 3, cycles: 3, tasks: 13, records: 6, templates: 3, notifications: 3, prices: 3, weather: 1 });
+    assert.deepEqual(counts, { members: 7, fields: 3, cycles: 3, tasks: 14, records: 6, templates: 3, notifications: 3, prices: 3, weather: 1 });
     const waiting = (await t.pool.query(`SELECT verification_required,status FROM app.farm_tasks WHERE title='Drainage repair review'`)).rows[0];
     assert.equal(waiting.verification_required, true);
     assert.equal(waiting.status, 'completed');

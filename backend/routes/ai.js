@@ -6,6 +6,7 @@ import { AiError, isConfigured } from '../services/geminiProvider.js';
 import { validateImage, validateAudio, MAX_IMAGE_BYTES, MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS } from '../services/mediaService.js';
 import { PRESETS } from '../services/aiPresets.js';
 import { memberOnly, quotaLimits } from '../middleware/memberAccess.js';
+import { errorBody } from '../middleware/errors.js';
 
 // Per signed-in member (Cloud Phone users share one egress IP), plus a daily cap for the whole
 // server so the shared Gemini quota survives a busy demo.
@@ -34,15 +35,12 @@ function sendError(res, err) {
   const code = err instanceof AiError ? err.code : 'INTERNAL_ERROR';
   if (code === 'CANCELLED') return; // client aborted; nothing to write
   if (!(err instanceof AiError)) console.error('ai route error:', err.message);
-  res.status(STATUS[code] || 500).json({
-    ok: false,
-    error: {
-      code,
-      message: err instanceof AiError ? err.message : 'Something went wrong.',
-      retryable: RETRYABLE.has(code),
-      fallbackAvailable: true,
-    },
-  });
+  res.status(STATUS[code] || 500).json(errorBody(res.req, {
+    code,
+    message: err instanceof AiError ? err.message : 'Something went wrong.',
+    retryable: RETRYABLE.has(code),
+    fallbackAvailable: true,
+  }));
 }
 
 export function aiRouter({ auth } = {}) {

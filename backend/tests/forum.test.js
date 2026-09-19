@@ -17,7 +17,7 @@ test('guest can list communities, read the feed and open a post', async (t) => {
   const g = f.client();
   const comm = await g.get('/api/forum/communities');
   assert.deepEqual(comm.body.items.map((c) => c.slug), ['crop-talk', 'machinery', 'market-talk', 'livestock', 'farm-life']);
-  assert.equal(comm.body.items[0].postCount, 8);
+  assert.equal(comm.body.items[0].postCount, 10);
 
   const feed = await g.get('/api/forum/posts?limit=20');
   assert.equal(feed.body.items.length, 20);
@@ -87,7 +87,7 @@ test('filters: community, tag, type, status, scope', async (t) => {
   assert.equal((await list('community=machinery')).length, 2);
   assert.ok((await list('tag=rice')).every((p) => p.tags.includes('rice')));
   assert.ok((await list('type=local_report')).every((p) => p.type === 'local_report'));
-  assert.deepEqual((await list('status=solved')).map((p) => p.id), [postId('crop_01')]);
+  assert.deepEqual((await list('status=solved')).map((p) => p.id).sort(), [postId('crop_01'), postId('up_meerut_wheat_01'), postId('up_lucknow_tomato_01')].sort());
   assert.ok((await list('status=open')).every((p) => p.type === 'question' && !p.isSolved));
   assert.ok((await list('scope=region&region=IN-BR')).every((p) => p.regionCode === 'IN-BR'));
   assert.ok((await list('scope=country&region=IN-BR')).every((p) => p.countryCode === 'IN'));
@@ -105,8 +105,8 @@ test('cursor pagination walks the feed without repeats', async (t) => {
     seen.push(...r.body.items.map((p) => p.id));
     cursor = r.body.nextCursor;
   } while (cursor);
-  assert.equal(seen.length, 20);
-  assert.equal(new Set(seen).size, 20);
+  assert.equal(seen.length, 24);
+  assert.equal(new Set(seen).size, 24);
   assert.equal((await g.get('/api/forum/posts?cursor=%%%')).status, 400);
 });
 
