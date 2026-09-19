@@ -399,3 +399,33 @@
 ### 組員注意事項
 
 - 全 app 行情只有一個來源：`app.market_prices`（`syncMandi.js` 每 30 分鐘同步）。新功能需要價格請用 `createPriceService`，不要另接 API。
+
+---
+
+## 202609191909 GMT+8 — CI、統一 API 錯誤格式、現況盤點文件
+
+### 發現／問題
+
+- `docs/ENGINEERING_QUALITY_UPGRADE.md` 是照早期 proposal 寫的（SQLite、單檔 server、WebSocket、「沒有測試」），與現況不符；照抄會讓 server 起不來、Weather 畫面壞掉、`npm test` 漏掉 8 個測試檔。
+- 後端有 6 套錯誤格式：prices／weather 回 `{error:{code:'bad_request'}}`（沒有 `ok:false`），auth、admin、ai、tts 各自一套，`forumErrorHandler` 只管三個路徑；`sameOriginWrites` 複製了三份；未知的 `/api` 路徑回 HTML 404；沒有 request id。
+- 沒有 CI。
+
+### 做了什麼改動
+
+- 新文件：`docs/ENGINEERING_QUALITY_PLAN.md`（取代舊的 UPGRADE，舊檔保留）、`docs/CODEBASE_STATUS.md`（給組員與 agent 的現況盤點）。
+- 統一錯誤格式 `{ ok:false, error:{ code, message, field, retryable, requestId } }`：`middleware/errors.js` 改成全域 `errorHandler`（`forumErrorHandler` 保留為別名）；新增 `middleware/requestId.js`（`X-Request-Id`）、`middleware/sameOrigin.js`；auth／admin／prices／weather 改用 `next(err)`，成功回應加 `ok:true`；ai／tts 保留原本的 code，只補 requestId；`/api` 未知路徑回 JSON 404；缺表時的 503 改用 `unavailable()`。
+- 順手修：Today's Farm 停用時訊息誤寫成「Farmer Circle is not available」；`forum:dev` dev server 補掛 `/api/weather`。
+- CI：`.github/workflows/ci.yml`（Node 22：`npm ci` → `npm test` → `npm run smoke`）；`backend/scripts/smoke.js` 不帶 DB 啟動真的 `server.js` 做 7 項檢查。只測試，不自動部署。
+
+### 部署與驗證
+
+- 本機：163/163 測試通過（新增 `tests/errors.test.js` 4 個）；`npm run smoke` 全過。
+- 瀏覽器 240×320（`prices-live`，demo `9100000002`）：Market Prices、Weather 正常顯示；net-profit API 正常，未知市場回 `404 NO_DATA`。
+- **尚未部署到 VM，CI 尚未在 GitHub 上跑過。**
+
+### 組員注意事項
+
+- 後端丟錯誤請用 `AppError` 或 `next(err)`，不要自己寫 `res.status(...).json({ error })`；新 code 要加進 `errors.js` 的 `STATUS` 表。前端請依 `error.code` 分支。
+- 開工前請先讀 `docs/CODEBASE_STATUS.md`；工程改進以 `docs/ENGINEERING_QUALITY_PLAN.md` 為準，舊的 UPGRADE 文件勿照做。
+- VM 是 Node 18，`package.json` 要求 >=20，CI 用 22；只在 Node 22 驗證過，部署前建議把 VM 升到 Node 22。
+- 行情 demo 請用 `9100000002`（北方邦），其他 demo 帳號所在地區沒有同步的行情。
