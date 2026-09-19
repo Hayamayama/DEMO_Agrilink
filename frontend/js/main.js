@@ -50,6 +50,12 @@ const router = createRouter({
   els: { status: $('status'), content: $('content'), sl: $('sk-l'), sc: $('sk-c'), sr: $('sk-r') },
 });
 initKeypad(router.dispatch, { debug: new URLSearchParams(location.search).has('debug') });
-identity.profile = { phone: '9100000000', language: 'en', name: 'Test User', village: 'Test Village' };
-router.start('MainMenu');
+try {
+  const session = await getJSON('/api/auth/session');
+  identity.profile = session.user;
+  router.start(session.user ? 'MainMenu' : 'AuthWelcome');
+} catch {
+  // A local price-only demo may intentionally run without PostgreSQL/auth.
+  router.start('AuthWelcome');
+}
 startMarketSync({ router });

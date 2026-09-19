@@ -35,3 +35,9 @@
   2. 完全重寫 `backend/services/ttsService.js`。現在不再依賴 `gemini-1.5-flash-8b`，而是將前端傳來的英文文字在後端翻譯，並直接透過 `google-translate-api-x` 下載免費的 Google 語音 MP3 回傳給前端。
   3. 復原 `frontend/js/tts.js`，恢復使用 `fetch('/api/tts')`。
 - **功能目的**：徹底解決 Gemini API 的 Rate Limit 與需要 API Key 的痛點，同時保留了「由雲端負責合成高品質語音，不佔用邊緣設備運算資源」的原始設計初衷 (Option A)。
+
+# 2026-09-19 17:54 合併 v2 至 v3 (定案部署版本)
+- **做了什麼改動**：
+  1. 將 `dogbark_v2` (Local Market 與 Today's Farm 等最新功能) 完整合併至 `dogbark_v3`。
+  2. 復原 `dogbark_v3/frontend/js/main.js` 的登入略過設定，重新啟用正式的登入流程。
+- **給組員的注意事項**：`dogbark_v3` 現在是擁有所有最新功能、擁有免費 Google Translate 語音、且正常要求使用者登入的最完整正式版本。請以此版本為主進行 GitHub push 與正式環境部署！
