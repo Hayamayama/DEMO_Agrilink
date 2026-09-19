@@ -28,6 +28,8 @@ import { MarketHome, MarketFeed, MarketFilter, MarketDetail } from './market/mar
 import { MarketOffers, MarketOffer, MarketDeals, MarketDeal, MarketReason } from './market/marketTrades.js';
 import { CreatePostTitle, CreatePostBody, CreatePostTagsLoader, CreatePostPreview } from './screens/createPost.js';
 import { farmOpsScreens } from './screens/farmOps.js';
+import { DemoWelcome, DemoHome, DemoGuide, DemoAlerts } from './screens/demo.js';
+import { loadDemo, homeScreen } from './demo.js';
 
 const farmerCircle = {
   FarmerCircleHome: farmerCircleHome, PostDetail: postDetail, ForumOptions: forumOptions, UserProfile: userProfile,
@@ -42,6 +44,7 @@ const screens = {
   AuthWelcome, AuthPhone, AuthPin, ProfileName, ProfileVillage, ProfileRegion, AuthResult, Settings, ProfileSummary, LanguageSettings, CropSettings, WelcomeLanguage,
   ...farmerCircle,
   MarketHome, MarketFeed, MarketFilter, MarketDetail, MarketForm, MarketNumber, MarketText, MarketOffers, MarketOffer, MarketDeals, MarketDeal, MarketReason,
+  DemoWelcome, DemoHome, DemoGuide, DemoAlerts,
   ...farmOpsScreens,
 };
 const $ = (id) => document.getElementById(id);
@@ -51,11 +54,12 @@ const router = createRouter({
   els: { status: $('status'), content: $('content'), sl: $('sk-l'), sc: $('sk-c'), sr: $('sk-r') },
 });
 initKeypad(router.dispatch, { debug: new URLSearchParams(location.search).has('debug') });
+await loadDemo();
 try {
   const session = await getJSON('/api/auth/session');
   identity.profile = session.user;
   if (session.user?.language && setLanguage(session.user.language)) await new Promise(() => {}); // reloading in the member's language
-  router.start(session.user ? 'MainMenu' : 'AuthWelcome');
+  router.start(session.user ? homeScreen() : (homeScreen() === 'DemoHome' ? 'DemoWelcome' : 'AuthWelcome'));
 } catch {
   // A local price-only demo may intentionally run without PostgreSQL/auth.
   router.start('AuthWelcome');

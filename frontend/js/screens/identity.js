@@ -3,6 +3,7 @@ import { MultiTap } from '../t9.js';
 import { getJSON, postJSON, ApiError } from '../api.js';
 import { identity } from '../state.js';
 import { t, language, setLanguage, LANGUAGES } from '../i18n/index.js';
+import { enterHome } from '../demo.js';
 
 const draft = { mode: 'signup', phone: '', pin: '', pinConfirm: '', name: new MultiTap({ max: 60 }), village: new MultiTap({ max: 80 }), regionId: null, language, cropIds: [], cropUserId: null };
 const digits = (value, max) => String(value).replace(/\D/g, '').slice(0, max);
@@ -20,9 +21,7 @@ async function options() {
   return identity.options;
 }
 function enterMain(ctx, profile) {
-  identity.profile = profile;
-  if (setLanguage(profile.language)) return; // reloads in the member's language
-  ctx.router.replace('MainMenu');
+  enterHome(ctx, profile);
 }
 function editKey(action, tap, ctx, next) {
   if (action.startsWith('NUM_')) { tap.press(Number(action.slice(4))); ctx.rerender(); return true; }

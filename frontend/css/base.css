@@ -15,3 +15,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg);
 .dim { color: var(--dim); }
 .big { font-size: calc(var(--fs) * 2); font-weight: 800; line-height: 1.1; }
 .msg { padding: var(--pad); text-align: center; color: var(--dim); }
+.demo-banner { padding: var(--pad); color: var(--accent); border-bottom: 1px solid #1d4a23; font-size: calc(var(--fs) * .82); }
+.demo-route { align-items: flex-start; }
+.demo-route-body { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.demo-route-title { font-weight: 800; }
+.demo-route-detail { font-size: calc(var(--fs) * .78); line-height: 1.15; }

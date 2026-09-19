@@ -22,6 +22,9 @@ import { errorHandler, unavailable, AppError } from './middleware/errors.js';
 import { requestId } from './middleware/requestId.js';
 import { createFarmOpsRouter } from './routes/farmOps.js';
 import { seedFarmOps } from './db/farmOpsSeed.js';
+import { seedMarketDemo } from './db/marketSeed.js';
+import { versionRouter } from './routes/version.js';
+import { demoRouter } from './routes/demo.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -48,6 +51,7 @@ app.use((_req, res, next) => {
 });
 
 app.use(express.json({ limit: '32kb' })); // media goes through multipart, not JSON
+app.use('/api/version', versionRouter());
 
 // Postgres when DATABASE_URL is set, otherwise the in-memory demo data (flagged sample).
 const forumUnavailable = unavailable('Farmer Circle is not available right now.');
@@ -86,6 +90,7 @@ if (pool) {
     // Local Market needs migration 006; a missing table only disables this feature.
     try {
       await pool.query('SELECT 1 FROM app.market_listings LIMIT 0');
+      if (process.env.SEED_DEMO_DATA === 'true') await seedMarketDemo(pool, { log: (line) => console.log(line) });
       app.use('/api/market', createMarketRouter({ pool, auth }).router);
       console.log('market: Local Market enabled');
     } catch (err) {
@@ -111,6 +116,9 @@ if (pool) {
   }
 }
 if (!pool) app.use('/api/forum', forumUnavailable);
+// This is an intentionally separate demo convenience endpoint. The formal
+// product server never mounts it unless its explicit DEMO_MODE flag is set.
+if (process.env.DEMO_MODE === 'true') app.use('/api/demo', demoRouter({ auth }));
 console.log(process.env.GEMINI_API_KEY ? 'ai: gemini configured' : 'ai: no GEMINI_API_KEY - Ask AI serves offline fallbacks');
 // Unknown API paths answer in the error envelope, not Express's HTML "Cannot GET".
 app.use('/api', (_req, _res, next) => next(new AppError('NOT_FOUND', 'Not found.')));
