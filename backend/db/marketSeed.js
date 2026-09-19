@@ -109,7 +109,7 @@ export async function seedMarketDemo(pool, { env = process.env, now = Date.now()
   // e) the judge path: terms are mutually confirmed and a pickup code is ready,
   // but handover has not happened yet. Ravi is the buyer, so the code is visible
   // in his detail screen and can demonstrate the safe in-person exchange.
-  const e = await market.offerOnListing(users['Ravi K.'], ids['rahim-onion'], { requestId: 'seed-mkt-offer-e', ...terms(40, 42) });
+  const e = await market.offerOnListing(users['Ravi K.'], ids['rahim-onion'], { requestId: 'seed-mkt-offer-pickup', ...terms(40, 42) });
   if (['open', 'countered'].includes((await offerRow(e.id)).status)) await market.accept(users['Rahim U.'], e.id);
   deal = await dealOf(e.id);
   const rahim = users['Rahim U.'];
@@ -118,7 +118,7 @@ export async function seedMarketDemo(pool, { env = process.env, now = Date.now()
   await demoStep('agreed', () => market.schedule(rahim, deal.id, { pickupDate: dayOffset(1, now), pickupWindowStart: '10:00', pickupWindowEnd: '12:00', location: 'Patna collection point' }));
 
   // f) Lucknow: Pooja offers on Imran's tomatoes -> waiting for Imran to answer
-  await market.offerOnListing(users['Pooja Rawat'], ids['imran-tomato'], { requestId: 'seed-mkt-offer-f', ...terms(80, 16, { note: 'For my shop in Bakshi Ka Talab' }) });
+  await market.offerOnListing(users['Pooja Rawat'], ids['imran-tomato'], { requestId: 'seed-mkt-offer-e', ...terms(80, 16, { note: 'For my shop in Bakshi Ka Talab' }) });
 
   // Keep the demo fresh: open demo posts and live offers are pushed forward on every run.
   await q(`UPDATE app.market_listings SET expires_at = now() + interval '7 days', available_date = GREATEST(available_date, current_date), updated_at = now()
