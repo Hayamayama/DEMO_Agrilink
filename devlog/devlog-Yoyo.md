@@ -325,3 +325,10 @@
 - **做了什麼**：執行 `deploy/setup.sh`，主機更新到 `2ae7808`，服務 active，日誌 `ai: gemini configured`。
 - **驗證結果**：線上前端已含預填邏輯；對線上 `/api/ai/ask` 實測（稻葉褐斑）為真實 Gemini 回答（`fallback:false`），追問為問句：「Are the spots spreading fast?」「Should I spray fungicide now?」。
 - **給組員的注意事項**：手機/瀏覽器若仍看到舊畫面，強制重新整理以清除前端快取。
+
+## 202609191453 · 語音：後端實測通過 + 修正等待麥克風授權時畫面像當掉
+
+- **語音後端實測（線上）**：用 macOS `say` 合成英文問題，`.wav` 與 `.m4a`（Safari MediaRecorder 格式）皆正確轉成文字並得到真實 Gemini 答案（約 3–4 秒，`fallback:false`）。
+- **發現的問題**：組員在瀏覽器按 Enter 後畫面停在 `00s / 30s`。錄音本身正常（用假音訊來源驗證：計時、● REC、Stop、Send 都對），問題是瀏覽器麥克風授權對話框等待期間畫面沒有任何提示，授權若被忽略會永遠停在 00s。
+- **做了什麼改動**：等待授權時顯示「Allow the microphone when your browser asks.」與標題列「… MIC」；10 秒未回應自動放棄並提示「No microphone permission. Press Enter to retry.」；授權在取消後才回來的 stream 會立刻釋放，避免麥克風燈一直亮。本機用「永不回應的假麥克風」與「可用假麥克風」各走一遍。
+- **給組員的注意事項**：Claude 桌面 App 內建瀏覽器窗格會封鎖麥克風，語音請用真正的 Chrome 開 https 網址測；Cloud Phone / itel 實機仍未驗證。

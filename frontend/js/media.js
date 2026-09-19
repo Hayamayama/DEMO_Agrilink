@@ -127,7 +127,9 @@ export class VoiceRecorder {
 
   async start() {
     if (this.state === 'recording') return;
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (this.aborted) { stream.getTracks().forEach((t) => t.stop()); return; } // cancelled while the prompt was open
+    this.stream = stream;
     const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'].find(
       (m) => window.MediaRecorder?.isTypeSupported?.(m),
     );
@@ -160,6 +162,7 @@ export class VoiceRecorder {
 
   /** Stops everything and discards the recording. Safe to call from onHide. */
   cancel() {
+    this.aborted = true;
     clearInterval(this.timer);
     this.timer = null;
     if (this.recorder && this.state === 'recording') {

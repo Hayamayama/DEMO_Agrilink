@@ -210,14 +210,30 @@ async function toggleRecord(ctx) {
       ctx.rerender();
     },
   });
+  const mine = recorder;
   voice.state = 'starting';
+  ctx.rerender(); // show "Allow the microphone…" while the browser prompt is open
+  // An ignored permission prompt never settles; give up after 10s instead of
+  // sitting on 00s forever.
+  const giveUp = setTimeout(() => {
+    if (recorder !== mine || voice.state !== 'starting') return;
+    mine.cancel();
+    recorder = null;
+    voice.state = 'idle';
+    voice.error = 'No microphone permission. Press Enter to retry.';
+    ctx.rerender();
+  }, 10000);
   try {
-    await recorder.start();
+    await mine.start();
+    if (recorder !== mine || voice.state !== 'starting') return; // cancelled meanwhile
     voice.state = 'recording';
   } catch (err) {
+    if (recorder !== mine) return;
     voice.error = err?.name === 'NotAllowedError' ? 'Microphone blocked. Type instead.' : 'Microphone not available.';
     recorder = null;
     voice.state = 'idle';
+  } finally {
+    clearTimeout(giveUp);
   }
   ctx.rerender();
 }
@@ -225,13 +241,13 @@ async function toggleRecord(ctx) {
 export const AskAIVoice = {
   name: 'AskAIVoice',
   title: 'Voice',
-  statusBadge: () => (voice.state === 'recording' ? '● REC' : voice.state === 'done' ? `${voice.seconds}s` : ''),
+  statusBadge: () => ({ starting: '… MIC', recording: '● REC', done: `${voice.seconds}s` }[voice.state] || ''),
   softLeft: {
     label: () => (voice.state === 'done' ? 'Redo' : ''),
     handler: (ctx) => { if (voice.state === 'done') { resetVoice(); ctx.rerender(); } },
   },
   softCenter: {
-    label: () => ({ recording: 'Stop', done: 'Send' }[voice.state] || 'Record'),
+    label: () => ({ starting: '…', recording: 'Stop', done: 'Send' }[voice.state] || 'Record'),
     handler: (ctx) => toggleRecord(ctx),
   },
   softRight: { label: 'Cancel', handler: (ctx) => { resetVoice(); ctx.router.pop(); } },
@@ -247,6 +263,7 @@ export const AskAIVoice = {
 
     const hint = {
       idle: 'Press Enter and ask your question.',
+      starting: 'Allow the microphone when your browser asks.',
       recording: 'Listening… Enter to stop.',
       done: '1 Play · Enter Send · Left Redo',
     }[voice.state] || '';
@@ -262,7 +279,7 @@ export const AskAIVoice = {
   },
   // Leaving mid-recording must release the microphone.
   onHide() {
-    if (voice.state === 'recording') resetVoice();
+    if (voice.state === 'recording' || voice.state === 'starting') resetVoice();
     player?.pause();
   },
   onKey(action) {
