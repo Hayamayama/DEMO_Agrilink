@@ -7,8 +7,8 @@ import { AiError, isConfigured } from '../services/geminiProvider.js';
 import { validateImage, validateAudio, MAX_IMAGE_BYTES, MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS } from '../services/mediaService.js';
 import { PRESETS } from '../services/aiPresets.js';
 
-const PER_MINUTE = Number(process.env.AI_RATE_LIMIT_PER_MINUTE) || 6;
-const PER_DAY = Number(process.env.AI_RATE_LIMIT_PER_DAY) || 30;
+const PER_MINUTE = Number(process.env.AI_RATE_LIMIT_PER_MINUTE) || 15;
+const PER_DAY = Number(process.env.AI_RATE_LIMIT_PER_DAY) || 300;
 
 // Memory storage only: nothing touches disk, so there is no temp file to leak or clean up.
 const upload = multer({

@@ -302,3 +302,9 @@
   - 限流為每 IP 每分鐘 6 次、每日 30 次；demo 前避免用光額度。
   - 更新 key 或設定：改主機 `backend/.env` 後 `sudo systemctl restart agrilink`，日誌應見 `ai: gemini configured`。
   - 主辦提供的 SSH 私鑰在組員本機 `~/Downloads/id_ed25519`，不可進 repo，事後請妥善保管或刪除。
+
+## 202609191411 · 調高 Ask AI 限流（15/分鐘、300/天）
+
+- **發現的問題**：預設每 IP 每分鐘 6 次、每日 30 次，若 Cloud Phone/評審共用同一個出口 IP，整天只有 30 次可用，demo 容易被 429 擋下。
+- **做了什麼改動**：`AI_RATE_LIMIT_PER_MINUTE=15`、`AI_RATE_LIMIT_PER_DAY=300`（主機 `.env`、`.env.example`、`routes/ai.js` 預設值）並重新部署。成本仍受 10 分鐘快取與 500 token 輸出上限約束。
+- **給組員的注意事項**：限流存在記憶體，服務重啟即歸零；快取命中的請求仍計入額度。要再調整只需改主機 `backend/.env` 後 `sudo systemctl restart agrilink`。
