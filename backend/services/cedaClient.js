@@ -8,6 +8,15 @@ export class CedaApiError extends Error {
   }
 }
 
+// The live API wraps successful responses as { output: { data: [...] } },
+// whereas its Swagger schema documents top-level data/commodities/geographies.
+// Accept both so API packaging changes do not silently produce an empty import.
+export function cedaRecords(payload, namedKey) {
+  const body = payload?.output ?? payload ?? {};
+  const records = body[namedKey] ?? body.data ?? [];
+  return Array.isArray(records) ? records : [];
+}
+
 // CEDA calls its credential an API key in its registration UI, while its OpenAPI
 // specification uses HTTP Bearer authentication. Keep the credential server-side.
 export function createCedaClient({ token, baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch }) {

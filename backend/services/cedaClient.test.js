@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CedaApiError, createCedaClient } from './cedaClient.js';
+import { CedaApiError, cedaRecords, createCedaClient } from './cedaClient.js';
+
+test('CEDA response reader accepts the live output.data envelope', () => {
+  assert.deepEqual(cedaRecords({ output: { data: [{ commodity_id: 3 }] } }, 'commodities'), [{ commodity_id: 3 }]);
+  assert.deepEqual(cedaRecords({ commodities: [{ id: 3 }] }, 'commodities'), [{ id: 3 }]);
+});
 
 test('CEDA client uses Bearer auth and posts JSON', async () => {
   let seen;

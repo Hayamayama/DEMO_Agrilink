@@ -3,7 +3,7 @@
 //   set -a; . ./.env; set +a; node db/syncCeda.js catalog
 //   set -a; . ./.env; set +a; node db/syncCeda.js sync
 import { createPool } from './pool.js';
-import { createCedaClient } from '../services/cedaClient.js';
+import { cedaRecords, createCedaClient } from '../services/cedaClient.js';
 
 const mode = process.argv[2] || 'sync';
 const pool = createPool();
@@ -38,18 +38,18 @@ function dayOffset(days) {
 
 async function showCatalog() {
   const payload = await client.commodities();
-  console.log(JSON.stringify(payload.commodities ?? payload.data ?? payload, null, 2));
+  console.log(JSON.stringify(cedaRecords(payload, 'commodities'), null, 2));
 }
 async function showGeographies() {
   const payload = await client.geographies({ commodityId: process.env.CEDA_COMMODITY_ID });
-  console.log(JSON.stringify(payload.geographies ?? payload.data ?? payload, null, 2));
+  console.log(JSON.stringify(cedaRecords(payload, 'geographies'), null, 2));
 }
 async function showMarkets() {
   const payload = await client.markets({
     commodity_id: int('CEDA_COMMODITY_ID'), state_id: int('CEDA_STATE_ID'),
     district_id: int('CEDA_DISTRICT_ID'), indicator: 'price',
   });
-  console.log(JSON.stringify(payload.data ?? payload, null, 2));
+  console.log(JSON.stringify(cedaRecords(payload, 'data'), null, 2));
 }
 
 async function sync() {
@@ -69,13 +69,13 @@ async function sync() {
     client.prices({ commodity_id: commodityId, state_id: stateId, district_id: districtIds, market_id: marketIds, from_date: fromDate, to_date: toDate }),
     ...districtIds.map((districtId) => client.markets({ commodity_id: commodityId, state_id: stateId, district_id: districtId, indicator: 'price' })),
   ]);
-  const commodity = (commoditiesPayload.commodities ?? commoditiesPayload.data ?? []).find((item) => Number(item.id) === commodityId);
-  const cropLabel = process.env.CEDA_CROP_NAME || commodity?.name || cropName;
-  const geographies = geographiesPayload.geographies ?? geographiesPayload.data ?? [];
+  const commodity = cedaRecords(commoditiesPayload, 'commodities').find((item) => Number(item.id ?? item.commodity_id) === commodityId);
+  const cropLabel = process.env.CEDA_CROP_NAME || commodity?.name || commodity?.commodity_name || cropName;
+  const geographies = cedaRecords(geographiesPayload, 'geographies');
   const state = geographies.find((item) => Number(item.state_id) === stateId);
   const districtNames = new Map((state?.districts ?? []).map((item) => [Number(item.district_id), item.district_name]));
-  const markets = new Map(marketPayloads.flatMap((payload) => payload.data ?? []).map((item) => [Number(item.market_id), item.market_name]));
-  const rows = pricesPayload.data ?? [];
+  const markets = new Map(marketPayloads.flatMap((payload) => cedaRecords(payload, 'data')).map((item) => [Number(item.market_id), item.market_name]));
+  const rows = cedaRecords(pricesPayload, 'data');
   if (!rows.length) throw new Error('CEDA returned no price records for the selected filters');
 
   const db = await pool.connect();
