@@ -9,6 +9,7 @@ export function createRouter({ screens, els, ctxExtra = {} }) {
   const stack = [];
   const ctx = { ...ctxExtra };
   let focus = null;
+  let pendingRoot = null;
 
   function show() {
     const entry = stack[stack.length - 1];
@@ -59,6 +60,12 @@ export function createRouter({ screens, els, ctxExtra = {} }) {
     // The popstate handler re-renders it; if already there, just re-render.
     popTo(depth) { const n = stack.length - depth; if (n > 0) history.go(-n); else show(); },
     reset() { if (stack.length > 1) history.go(-(stack.length - 1)); },
+    // Unwinds to the root and swaps it for `name` (e.g. sign-out). history.go is async, so a
+    // replace() right after reset() would hit the old top entry and then be unwound away.
+    resetTo(name, params) {
+      if (stack.length > 1) { pendingRoot = { name, params }; history.go(-(stack.length - 1)); return; }
+      hideCurrent(); stack[0] = { name, params }; show();
+    },
     start(name) {
       history.replaceState({ d: 0 }, '');
       stack.push({ name });
@@ -74,6 +81,7 @@ export function createRouter({ screens, els, ctxExtra = {} }) {
     const d = e.state?.d ?? 0;
     hideCurrent();
     stack.length = Math.min(stack.length, d + 1);
+    if (pendingRoot && stack.length === 1) { stack[0] = pendingRoot; pendingRoot = null; }
     show();
   });
 

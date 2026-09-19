@@ -1,14 +1,17 @@
 import { Router } from 'express';
 import multer from 'multer';
-import rateLimit from 'express-rate-limit';
 import { askAI } from '../services/aiAdapter.js';
 import { normalizeRequest, LIMITS } from '../services/aiSchemas.js';
 import { AiError, isConfigured } from '../services/geminiProvider.js';
 import { validateImage, validateAudio, MAX_IMAGE_BYTES, MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS } from '../services/mediaService.js';
 import { PRESETS } from '../services/aiPresets.js';
+import { memberOnly, quotaLimits } from '../middleware/memberAccess.js';
 
+// Per signed-in member (Cloud Phone users share one egress IP), plus a daily cap for the whole
+// server so the shared Gemini quota survives a busy demo.
 const PER_MINUTE = Number(process.env.AI_RATE_LIMIT_PER_MINUTE) || 15;
 const PER_DAY = Number(process.env.AI_RATE_LIMIT_PER_DAY) || 300;
+const GLOBAL_PER_DAY = Number(process.env.AI_GLOBAL_LIMIT_PER_DAY) || 1500;
 
 // Memory storage only: nothing touches disk, so there is no temp file to leak or clean up.
 const upload = multer({
@@ -19,15 +22,6 @@ const upload = multer({
 const limitPayload = (message) => ({
   ok: false,
   error: { code: 'AI_RATE_LIMIT', message, retryable: true, fallbackAvailable: true },
-});
-
-const perMinute = rateLimit({
-  windowMs: 60_000, limit: PER_MINUTE, standardHeaders: true, legacyHeaders: false,
-  message: limitPayload('Too many questions. Wait a minute.'),
-});
-const perDay = rateLimit({
-  windowMs: 24 * 60 * 60_000, limit: PER_DAY, standardHeaders: false, legacyHeaders: false,
-  message: limitPayload('Daily demo limit reached.'),
 });
 
 const RETRYABLE = new Set(['AI_TIMEOUT', 'AI_RATE_LIMIT', 'AI_UNAVAILABLE', 'AI_INVALID_OUTPUT']);
@@ -51,8 +45,9 @@ function sendError(res, err) {
   });
 }
 
-export function aiRouter() {
+export function aiRouter({ auth } = {}) {
   const router = Router();
+  const guard = [memberOnly(auth), ...quotaLimits({ perMinute: PER_MINUTE, perDay: PER_DAY, globalPerDay: GLOBAL_PER_DAY, payload: limitPayload })];
 
   router.get('/capabilities', (_req, res) => {
     res.json({
@@ -68,7 +63,7 @@ export function aiRouter() {
     });
   });
 
-  router.post('/ask', perDay, perMinute, async (req, res) => {
+  router.post('/ask', guard, async (req, res) => {
     const parsed = normalizeRequest(req.body);
     if (!parsed.ok) return sendError(res, new AiError('INVALID_INPUT', 'Question could not be read.'));
     const { requestId, conversationId, presetId, text, language, userContext } = parsed.request;
@@ -81,7 +76,7 @@ export function aiRouter() {
     } catch (err) { sendError(res, err); }
   });
 
-  router.post('/ask-media', perDay, perMinute, upload.fields([{ name: 'image', maxCount: 1 }, { name: 'audio', maxCount: 1 }]), async (req, res) => {
+  router.post('/ask-media', guard, upload.fields([{ name: 'image', maxCount: 1 }, { name: 'audio', maxCount: 1 }]), async (req, res) => {
     let image = null;
     let audio = null;
     try {

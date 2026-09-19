@@ -101,6 +101,9 @@ export const MarketOffer = {
     info.appendChild(line('Round', `${revisions.length}${o.proposedByMe ? ' · yours' : ' · theirs'}`));
     if (['open', 'countered'].includes(o.status)) info.appendChild(line('Ends', timeLeft(o.expiresAt)));
     info.appendChild(el('forum-hint', 'Total is an estimate; weight may be measured at handover.'));
+    if (o.onDemoPost && o.proposedByMe && ['open', 'countered'].includes(o.status)) {
+      info.appendChild(el('forum-error-text', 'Demo post: nobody will answer this offer.'));
+    }
     wrap.appendChild(info);
     const list = el('list');
     p.actions.forEach((a, i) => list.appendChild(row(i + 1, a.label)));

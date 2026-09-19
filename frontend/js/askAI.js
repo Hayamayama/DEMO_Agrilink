@@ -2,7 +2,7 @@
 // everything that outlives a screen (composer contents, the in-flight request,
 // conversation id, local history) lives here.
 import { postJSON, postFormData, ApiError } from './api.js';
-import { user } from './state.js';
+import { user, identity } from './state.js';
 
 export const MAX_TEXT = 300;
 
@@ -19,7 +19,10 @@ export const composer = {
   text: '',
   image: null,   // { blob, previewUrl, isDemoSample }
   audio: null,   // { blob, seconds }
-  language: 'en',
+  // Until the member toggles it here, Ask AI answers in their profile language when it supports it.
+  chosenLanguage: null,
+  get language() { return this.chosenLanguage ?? (identity.profile?.language === 'hi' ? 'hi' : 'en'); },
+  set language(value) { this.chosenLanguage = value; },
   conversationId: null,
   reset({ keepConversation = false } = {}) {
     this.clearMedia();
@@ -66,12 +69,18 @@ export async function loadCapabilities() {
 
 const requestId = () => `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
-export const userContext = () => ({
-  region: user.region,
-  crops: ['rice'],
-  experienceLevel: 'smallholder',
-  market: user.homeMarket,
-});
+// From the signed-in member's profile. The price market is only named when prices are loaded for
+// the member's own region; otherwise it would describe somebody else's market.
+export const userContext = () => {
+  const p = identity.profile;
+  const region = p?.regionCode || user.region;
+  return {
+    region,
+    crops: (p?.cropCodes || []).slice(0, 4),
+    experienceLevel: 'smallholder',
+    ...(region === user.region ? { market: user.homeMarket } : {}),
+  };
+};
 
 /**
  * Starts a request and moves to the Thinking screen. Returns immediately: the

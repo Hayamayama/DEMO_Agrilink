@@ -102,5 +102,6 @@ export default {
     ctx.rerender();
     ctx.focus.set(i);
   },
-  onHide() { detail = false; tried = false; },
+  // Refetch on every visit (the server caches for 30 min): the forecast and the signed-in member may have changed.
+  onHide() { detail = false; tried = false; data = null; },
 };

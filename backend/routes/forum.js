@@ -1,7 +1,7 @@
 import express, { Router } from 'express';
 import { sessionFromRequest } from './auth.js';
 import { AppError, asyncHandler, forumNotFound } from '../middleware/errors.js';
-import { limitByIp, createLimiter } from '../middleware/rateLimits.js';
+import { limitByUser, createLimiter } from '../middleware/rateLimits.js';
 import { createForumService } from '../services/forumService.js';
 
 const int = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
@@ -52,7 +52,7 @@ export function createForumRouter({ pool, auth, config = loadForumConfig() }) {
     next();
   }));
 
-  const reads = limitByIp(limiter, 'read', config.readsPerMinute, 60000, 'requests');
+  const reads = limitByUser(limiter, 'read', config.readsPerMinute, 60000, 'requests');
   const need = (message) => (req, _res, next) => next(req.user ? undefined : new AppError('AUTH_REQUIRED', message));
   const write = (message) => [json, need(message)];
   const send = (fn, status = 200) => asyncHandler(async (req, res) => {

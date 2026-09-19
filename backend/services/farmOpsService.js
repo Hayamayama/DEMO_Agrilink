@@ -54,6 +54,29 @@ export function createFarmOpsService(pool) {
     return { items: r.rows };
   }
 
+  // A member with no farm would otherwise hit a dead end, so they can start their own. The farm
+  // takes the profile's region and a country timezone; calling again returns the same farm.
+  const TIMEZONES = { IN: 'Asia/Kolkata', VN: 'Asia/Ho_Chi_Minh', BD: 'Asia/Dhaka', TW: 'Asia/Taipei' };
+  async function createFarm(user) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`farm-owner:${user.id}`]);
+      const existing = (await client.query(`SELECT id FROM app.farms WHERE owner_user_id=$1 AND status='active' ORDER BY created_at LIMIT 1`, [user.id])).rows[0];
+      if (existing) { await client.query('COMMIT'); return { id: existing.id, duplicate: true }; }
+      const region = (await client.query(`SELECT r.code, r.country_code, r.latitude, r.longitude, p.display_name
+        FROM app.user_profiles p JOIN app.regions r ON r.id=p.region_id WHERE p.user_id=$1`, [user.id])).rows[0];
+      if (!region) fail('PROFILE_REQUIRED', 'Complete your profile first.');
+      const name = `${region.display_name}'s farm`.slice(0, 80);
+      const farm = (await client.query(`INSERT INTO app.farms(name,owner_user_id,country_code,region_code,timezone,latitude,longitude)
+        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [name, user.id, region.country_code, region.code, TIMEZONES[region.country_code] || 'UTC', region.latitude, region.longitude])).rows[0];
+      await client.query(`INSERT INTO app.farm_members(farm_id,user_id,role,status,accepted_at) VALUES ($1,$2,'owner','active',now())`, [farm.id, user.id]);
+      await client.query('COMMIT');
+      return { id: farm.id, duplicate: false };
+    } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+  }
+
   async function overview(user, farmId, requestedDate) {
     const farm = await membership(user.id, farmId);
     const day = requestedDate ? dateOnly(requestedDate) : (await pool.query(`SELECT (now() AT TIME ZONE $1)::date::text day`, [farm.timezone])).rows[0].day;
@@ -220,5 +243,5 @@ export function createFarmOpsService(pool) {
     const r = await pool.query(`SELECT r.*,f.name field_name,p.display_name actor_name,t.title task_title FROM app.farm_records r LEFT JOIN app.farm_fields f ON f.id=r.field_id LEFT JOIN app.user_profiles p ON p.user_id=r.actor_user_id LEFT JOIN app.farm_tasks t ON t.id=r.task_id WHERE ${where.join(' AND ')} ORDER BY r.occurred_at DESC LIMIT 100`, params);
     return { items: r.rows };
   }
-  return { farms, membership, overview, calendar, listTasks, getTask, createTask, transition, checklist, fields, members, records };
+  return { farms, createFarm, membership, overview, calendar, listTasks, getTask, createTask, transition, checklist, fields, members, records };
 }

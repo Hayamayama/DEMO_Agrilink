@@ -20,16 +20,20 @@ test('unknown crop or region -> null', async () => {
   assert.equal(await svc.getPrices({ crop: 'rice', region: 'XX-00' }), null);
 });
 
-test('analyze: rising -> wait, falling -> sell_now, flat -> hold', () => {
-  assert.equal(analyze([100, 101, 103, 106]).recommendation, 'wait');
-  assert.equal(analyze([106, 103, 101, 100]).recommendation, 'sell_now');
-  assert.equal(analyze([100, 100, 101, 100]).recommendation, 'hold');
-  assert.ok(analyze([100, 130]).reason.length <= 80);
+test('analyze states where the price sits against its recent average, without a forecast', () => {
+  assert.equal(analyze([100, 101, 103, 106]).recommendation, 'above_average');
+  assert.equal(analyze([106, 103, 101, 100]).recommendation, 'below_average');
+  assert.equal(analyze([100, 100, 101, 100]).recommendation, 'steady');
+  for (const series of [[100, 130], [130, 100], [100, 100]]) {
+    const { reason } = analyze(series);
+    assert.ok(reason.length <= 80);
+    assert.doesNotMatch(reason, /wait|days/i);
+  }
 });
 
-test('demo data trends up so the wait advice is shown', async () => {
+test('demo data trends up, so the home price is above its recent average', async () => {
   const d = await svc.getPrices({ crop: 'rice', region: 'IN-UP-01', home: 'rampur' });
-  assert.equal(d.analysis.recommendation, 'wait');
+  assert.equal(d.analysis.recommendation, 'above_average');
 });
 
 test('netProfit subtracts transport and scales by qty', () => {
@@ -76,4 +80,39 @@ test('historical database rows retain their latest date and source', async () =>
   assert.equal(d.date, '2025-10-30');
   assert.equal(d.source, 'agmarknet');
   assert.equal(d.sample, false);
+});
+
+// Mirrors the CEDA import on the VM: markets without coordinates, latest prices on different days,
+// and an old previous price.
+const ceda = createPriceService({
+  async history() {
+    const row = (market_code, market_name, date, modal) => ({ market_code, market_name, lat: null, lng: null, date, modal, currency: 'INR', unit: 'quintal', source: 'agmarknet', sample: false });
+    return [
+      row('ceda-680', 'Rampur', '2025-06-01', 3000), row('ceda-680', 'Rampur', '2025-10-29', 3260), row('ceda-680', 'Rampur', '2025-10-30', 3290),
+      row('ceda-3452', 'Milak', '2025-10-29', 3300),
+    ];
+  },
+});
+
+test('net profit without market coordinates reports unknown transport, not a free trip', async () => {
+  const n = await ceda.getNetProfit({ crop: 'rice', region: 'IN-CEDA-S9-D136', from: 'ceda-680', to: 'ceda-3452', qty: 5 });
+  assert.equal(n.transport_known, false);
+  assert.equal(n.distance_km, null);
+  assert.equal(n.transport_per_qt, null);
+  assert.equal(n.gain_per_qt, 10); // before transport
+});
+
+test('net profit uses the "from" market as home and reports each side\'s date', async () => {
+  const n = await ceda.getNetProfit({ crop: 'rice', region: 'IN-CEDA-S9-D136', from: 'ceda-680', to: 'ceda-3452', qty: 1 });
+  assert.equal(n.price_date, '2025-10-30');
+  assert.deepEqual([n.from_date, n.to_date, n.same_day], ['2025-10-30', '2025-10-29', false]);
+});
+
+test('price change and the analysis ignore prices older than the recent window', async () => {
+  const d = await ceda.getPrices({ crop: 'rice', region: 'IN-CEDA-S9-D136', home: 'ceda-680' });
+  const rampur = d.markets[0];
+  assert.equal(rampur.change_pct, 0.9); // vs 2025-10-29, not the June price
+  assert.equal(d.markets.find((m) => m.code === 'ceda-3452').change_pct, null); // no recent previous price
+  assert.equal(d.markets.find((m) => m.code === 'ceda-3452').days_from_home, 1);
+  assert.equal(d.analysis.recommendation, 'steady'); // June's 3000 is outside the two-week average
 });

@@ -102,3 +102,22 @@ test('a wrong PIN increments failures and returns INVALID_LOGIN instead of a Pos
     assert.equal(Number(row.failed_attempts), 1);
   } finally { await t.close(); }
 });
+
+test('a member without a farm can start one, once, and use it', async () => {
+  const t = await setup();
+  try {
+    const regionId = (await t.pool.query("SELECT id FROM app.regions WHERE code='IN-BR'")).rows[0].id;
+    const { user } = await t.auth.signup({ phone: '9199999999', pin: '135790', displayName: 'New Farmer', village: 'Hajipur', regionId });
+    assert.deepEqual((await t.ops.farms(user)).items, []);
+    const created = await t.ops.createFarm(user);
+    assert.equal(created.duplicate, false);
+    assert.deepEqual(await t.ops.createFarm(user), { id: created.id, duplicate: true });
+    const [farm] = (await t.ops.farms(user)).items;
+    assert.equal(farm.id, created.id);
+    assert.equal(farm.role, 'owner');
+    assert.equal(farm.timezone, 'Asia/Kolkata');
+    assert.equal(farm.name, "New Farmer's farm");
+    const task = await t.ops.createTask(user, farm.id, { title: 'Field inspection', type: 'inspection', localDate: '2026-09-19', isAllDay: true });
+    assert.equal((await t.ops.overview(user, farm.id, '2026-09-19')).summary.total, 1, task.id);
+  } finally { await t.close(); }
+});

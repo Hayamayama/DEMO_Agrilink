@@ -320,3 +320,32 @@
 ### 組員注意事項
 
 - My Deals 的數字快捷鍵由 6 改為 7。
+
+---
+
+## 202609191742 GMT+8 — 程式碼流程問題修正（8 項）與部署
+
+### 發現／問題
+
+- 全面 review 後找出 8 個可由程式碼確認的流程問題（登入後行情／Ask AI 失效、登出停在主選單、共用 IP 限流、TTS/AI 未登入可用、Today's Farm 新用戶死路、Settings 未被使用、淨利計算不一致、市集示範帳號不回應）。
+
+### 做了什麼改動（依序，各自一個 commit）
+
+1. `6e80956` 登入後不再把 region UUID 寫入 `user.region`（原本導致 /api/prices 400、Ask AI 每題 INVALID_INPUT）；登出改用 `router.resetTo()`，確實回到 Welcome。
+2. `6818c3d` 限流改按帳號：Cloud Phone 所有手機共用 CloudMosa 出口 IP（203.208.133.15）。市集／論壇按會員、登入按電話號碼（每號 15 分鐘 10 次），IP 只做寬鬆防洪。
+3. `a496832` /api/ai、/api/tts 需登入；按會員限流並加全站每日上限（`AI_GLOBAL_LIMIT_PER_DAY`、`TTS_GLOBAL_LIMIT_PER_DAY`）；TTS 以記憶體 LRU 快取相同文字的語音。
+4. `73c9e25` Today's Farm：新增 `POST /api/farms` 讓新會員建立自己的農場；Quick Add 指派給自己（一人農場可完成任務）；儀表板顯示快捷鍵並接上 6 Team、7 Fields；alert() 改 toast；「今天」依農場時區。
+5. `ec64866` profile 帶 regionCode、座標、cropCodes；Ask AI 送會員自己的地區／作物，profile 為 hi 時預設印地語；天氣預設會員地區。migration 008 補 region 座標。
+6. `2afc844` 行情：CEDA 兩個市場原本無座標，淨利以 0 km、免運費計算（Rampur→Milak 顯示 +₹10/qt，實際 32 km、運費 ₹48，淨 −₹38/qt）。無座標時顯示「運費未知」；migration 009 補市場座標；net-profit 以 from 為本地市場並回傳兩邊日期；漲跌只比 7 天內；分析改為陳述與近兩週平均的關係，不再建議「等兩天」。
+7. `71431f2` 市集：示範貼文與對其發出的 offer 會明確提示「沒有人會回覆」。
+
+### 部署
+
+- VM 更新至 `71431f2`，服務 active。008、009（純資料 UPDATE）以 postgres 角色套用並寫入 ledger；套用前備份 `~/agrilink-backup-regions-markets-202609190941.sql`。
+- 外部驗證：匿名呼叫 /api/tts、/api/ai/ask 回 401；net-profit 回傳 32 km／運費 ₹48。
+
+### 組員注意事項
+
+- 前端需強制重新整理才會拿到新版。
+- Ask AI 與 TTS 現在必須登入；本機無資料庫的 demo 模式仍開放。
+- 行情資料仍停在 2025-10-30，且前端地區仍固定為 `IN-CEDA-S9-D136`（行情個人化與每日同步是下一階段）。

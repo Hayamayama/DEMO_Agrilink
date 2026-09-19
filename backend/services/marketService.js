@@ -309,7 +309,8 @@ export function createMarketService({ pool, limiter, env = process.env, config =
            ROUND(rv.quantity * rv.unit_price, 2) AS rv_total,
            COALESCE(l.unit, br.unit) AS unit, c.code AS crop_code, c.name AS crop_name,
            pp.display_name AS proposer_name, rp.display_name AS recipient_name,
-           (SELECT d.id FROM app.market_deals d WHERE d.offer_id = o.id) AS deal_id
+           (SELECT d.id FROM app.market_deals d WHERE d.offer_id = o.id) AS deal_id,
+           COALESCE(l.is_demo, br.is_demo, false) AS on_demo_post
     FROM app.market_offers o
     JOIN app.market_offer_revisions rv ON rv.offer_id = o.id AND rv.revision_number = o.current_revision
     LEFT JOIN app.market_listings l ON l.id = o.listing_id
@@ -333,6 +334,7 @@ export function createMarketService({ pool, limiter, env = process.env, config =
       proposedByMe: row.rv_by === user.id,
       awaitingMyResponse: ['open', 'countered'].includes(row.status) && row.rv_by !== user.id,
       dealId: row.deal_id || null,
+      onDemoPost: row.on_demo_post, // seeded post: its account is not monitored, so nobody will answer
     };
   }
 

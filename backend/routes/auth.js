@@ -1,5 +1,5 @@
 import express from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { coded } from '../services/authService.js';
 
 const COOKIE = 'agrilink_session';
@@ -33,10 +33,16 @@ export function requireUser(auth) {
 
 export function authRouter({ auth, pool }) {
   const router = express.Router();
-  // This supplements the per-account PIN lock: it keeps one shared NAT/IP
-  // from trying an unbounded number of different account numbers.
-  router.use('/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false,
-    handler: (_req, res) => res.status(429).json({ ok: false, error: { code: 'RATE_LIMITED', message: 'Try again in a few minutes.' } }),
+  // These supplement the per-account PIN lock. All Cloud Phone handsets share CloudMosa's egress
+  // IPs, so the real limit is per phone number; the per-IP cap stays only as a guard against one
+  // source walking through many account numbers.
+  const tooMany = (_req, res) => res.status(429).json({ ok: false, error: { code: 'RATE_LIMITED', message: 'Try again in a few minutes.' } });
+  router.use('/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: true, legacyHeaders: false, handler: tooMany }));
+  router.use('/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: false, legacyHeaders: false, handler: tooMany,
+    keyGenerator: (req) => {
+      const phone = String(req.body?.phone ?? '').replace(/\D/g, '');
+      return phone ? `phone:${phone}` : `ip:${ipKeyGenerator(req.ip)}`;
+    },
   }));
   router.get('/options', async (_req, res, next) => {
     try {

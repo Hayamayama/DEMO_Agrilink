@@ -12,6 +12,11 @@ function dataDate(value) {
   return `${day} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(month) - 1]} ${year}`;
 }
 
+function shortDate(value) {
+  const [, month, day] = String(value).split('-');
+  return `${Number(day)} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(month) - 1]}`;
+}
+
 function sourceLabel(source) {
   return source === 'agmarknet' ? 'CEDA / AGMARKNET' : source || 'Database';
 }
@@ -51,7 +56,9 @@ export default {
     data.markets.forEach((m, i) => {
       const row = h('item');
       const arrow = m.change_pct > 0 ? '▲' : m.change_pct < 0 ? '▼' : '';
-      row.append(h('', i === 0 ? `Your area · ${m.name}` : m.name), h('dim', `${money(m.price, data.currency)}/qt ${arrow}`));
+      // A market whose latest price is from another day than the home market says so.
+      const when = m.days_from_home ? ` · ${shortDate(m.date)}` : '';
+      row.append(h('', i === 0 ? `Your area · ${m.name}` : m.name), h('dim', `${money(m.price, data.currency)}/qt ${arrow}${when}`));
       wrap.appendChild(row);
     });
     wrap.appendChild(h('msg dim', `Data: ${dataDate(data.date)} · ${sourceLabel(data.source)}`));

@@ -34,6 +34,7 @@ export function createFarmOpsRouter({ pool, auth }) {
   });
 
   router.get('/', send((req) => service.farms(req.user)));
+  router.post('/', json, send((req) => service.createFarm(req.user), (o) => (o.duplicate ? 200 : 201)));
   router.get('/:farmId/today', send((req) => service.overview(req.user, req.params.farmId, req.query.date)));
   router.get('/:farmId/calendar', send((req) => service.calendar(req.user, req.params.farmId, req.query)));
   router.get('/:farmId/tasks', send((req) => service.listTasks(req.user, req.params.farmId, req.query)));

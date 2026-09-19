@@ -33,15 +33,18 @@ export default {
     const { cropLabel, market } = ctx.params;
     const head = h('', null);
     head.style.padding = 'var(--pad)';
-    head.append(h('', `${cropLabel} @ ${market.name}`), h('dim', bars(market.trend) + ' 7d'));
+    head.append(h('', `${cropLabel} @ ${market.name}`), h('dim', `${bars(market.trend)} last ${market.trend.length} prices`));
     wrap.appendChild(head);
     if (!calc) { wrap.appendChild(h('msg', error || 'Loading…')); return wrap; }
 
     const rows = [
       [`Sell at ${calc.to}`, `${money(calc.price_to, calc.currency)}/qt`],
       ['Your area', `${money(calc.price_from, calc.currency)}/qt`],
-      [`Transport ~${calc.distance_km}km`, `${signed(-calc.transport_per_qt, calc.currency)}/qt`],
-      ['Net gain', `${signed(calc.gain_per_qt, calc.currency)}/qt`],
+      // Unknown distance is shown as unknown, never as a free trip.
+      calc.transport_known
+        ? [`Transport ~${calc.distance_km}km`, `${signed(-calc.transport_per_qt, calc.currency)}/qt`]
+        : ['Transport', 'not known'],
+      [calc.transport_known ? 'Net gain' : 'Gain before transport', `${signed(calc.gain_per_qt, calc.currency)}/qt`],
       [`For ${calc.qty} qt  ◄ ►`, signed(calc.gain_total, calc.currency)],
     ];
     rows.forEach(([a, b], i) => {
@@ -50,7 +53,8 @@ export default {
       wrap.appendChild(r);
     });
     wrap.appendChild(h('msg dim', `Price data: ${dataDate(calc.price_date)} · ${calc.source === 'agmarknet' ? 'CEDA / AGMARKNET' : calc.source || 'Database'}`));
-    if (calc.estimated) wrap.appendChild(h('msg dim hide-small', 'Transport is an estimate'));
+    if (!calc.same_day) wrap.appendChild(h('msg', `Prices are from different days: ${dataDate(calc.to_date)} vs ${dataDate(calc.from_date)}.`));
+    wrap.appendChild(h('msg dim hide-small', `${calc.transport_known ? 'Transport is an estimate. ' : ''}Before market fees and commission.`));
     return wrap;
   },
   onKey(action, ctx) {

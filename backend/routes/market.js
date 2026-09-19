@@ -1,7 +1,7 @@
 import express, { Router } from 'express';
 import { sessionFromRequest } from './auth.js';
 import { AppError, asyncHandler } from '../middleware/errors.js';
-import { limitByIp, createLimiter } from '../middleware/rateLimits.js';
+import { limitByUser, createLimiter } from '../middleware/rateLimits.js';
 import { createMarketService } from '../services/marketService.js';
 
 // Local Market API. Every route needs a signed-in member: listings are matched by the poster's
@@ -34,7 +34,7 @@ export function createMarketRouter({ pool, auth, env = process.env, config }) {
     req.user = profile;
     next();
   }));
-  router.use(limitByIp(limiter, 'market', 240, 60000, 'requests'));
+  router.use(limitByUser(limiter, 'market', 240, 60000, 'requests'));
 
   const send = (fn, status = 200) => asyncHandler(async (req, res) => {
     const out = await fn(req);

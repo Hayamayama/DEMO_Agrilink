@@ -156,9 +156,11 @@ export function createAuthService(pool, env = process.env) {
   async function profileFor(db, userId) {
     const result = await db.query(
       `SELECT u.id, u.role, u.status, p.display_name AS "displayName", p.village, p.region_id AS "regionId", r.name AS "regionName", p.language,
-              COALESCE(array_agg(uc.crop_id) FILTER (WHERE uc.crop_id IS NOT NULL), '{}') AS "cropIds"
+              r.code AS "regionCode", r.latitude::float8 AS "regionLat", r.longitude::float8 AS "regionLng",
+              COALESCE(array_agg(uc.crop_id) FILTER (WHERE uc.crop_id IS NOT NULL), '{}') AS "cropIds",
+              COALESCE(array_agg(c.code ORDER BY c.code) FILTER (WHERE c.code IS NOT NULL), '{}') AS "cropCodes"
        FROM app.users u JOIN app.user_profiles p ON p.user_id=u.id JOIN app.regions r ON r.id=p.region_id
-       LEFT JOIN app.user_crops uc ON uc.user_id=u.id WHERE u.id=$1
+       LEFT JOIN app.user_crops uc ON uc.user_id=u.id LEFT JOIN app.crops c ON c.id=uc.crop_id WHERE u.id=$1
        GROUP BY u.id, p.user_id, r.id`, [userId],
     );
     return result.rows[0] || null;

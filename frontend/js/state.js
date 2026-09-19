@@ -9,23 +9,31 @@ export const LOCATIONS = [
   { name: 'Dhaka, BD', lat: 23.81, lng: 90.41 },
 ];
 
-const KEY = 'agrilink.loc';
+const KEY = 'agrilink.weatherLoc'; // index into locations(), whose first entry is the member's region
 function saved() {
   try { return Number(localStorage.getItem(KEY)) || 0; } catch { return 0; }
 }
-let index = Math.min(saved(), LOCATIONS.length - 1);
+let index = saved();
 const override = q.get('lat') && q.get('lng')
   ? { name: `${Number(q.get('lat')).toFixed(1)}, ${Number(q.get('lng')).toFixed(1)}`, lat: Number(q.get('lat')), lng: Number(q.get('lng')) }
   : null;
+
+// The member's own region comes first in the Weather location list when it has coordinates;
+// the fixed list stays as a fallback and for demoing other places with *.
+function locations() {
+  const p = identity.profile;
+  const home = p?.regionLat != null && p?.regionLng != null ? { name: p.regionName, lat: p.regionLat, lng: p.regionLng } : null;
+  return home ? [home, ...LOCATIONS] : LOCATIONS;
+}
 
 export const user = {
   // The configured CEDA import lives in this Postgres region. Profile data will
   // replace these defaults once authentication/location matching is available.
   region: 'IN-CEDA-S9-D136',
   homeMarket: 'ceda-680',
-  get location() { return override || LOCATIONS[index]; },
+  get location() { const list = locations(); return override || list[Math.min(index, list.length - 1)]; },
   nextLocation() {
-    index = (index + 1) % LOCATIONS.length;
+    index = (Math.min(index, locations().length - 1) + 1) % locations().length;
     try { localStorage.setItem(KEY, String(index)); } catch { /* private mode etc. */ }
     return this.location;
   },
@@ -38,7 +46,8 @@ export const identity = { profile: null, options: null };
 export const farmOps = {
   activeFarmId: null,
   activeFarm: null,
-  activeDate: new URLSearchParams(location.search).get('demoDate') || new Date().toISOString().slice(0, 10),
+  // Set when a farm is chosen, from the farm's own timezone (the cloud browser's clock is not the farmer's).
+  activeDate: new URLSearchParams(location.search).get('demoDate') || null,
   calendarView: 'agenda',
   focusedTaskId: null,
 };
