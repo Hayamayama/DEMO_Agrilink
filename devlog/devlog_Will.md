@@ -67,3 +67,7 @@
   2. **備援 1**：如果遭 Google 封鎖 IP (503)，後端無縫切換使用官方 gemini-1.5-flash-8b 生成 MP3。
   3. **備援 2**：如果連 Gemini API 也失敗或超時，後端會回傳錯誤代碼 TTS_FALLBACK_NATIVE 並附上已翻譯好的文字，前端接收後作為最終手段，使用瀏覽器內建的 window.speechSynthesis 朗讀。
 - **功能目的**：將瀏覽器原生 API 降級為最低層級的最終備援，完美結合了雲端高品質發音與 100% 絕對不會失敗的可靠性。
+
+# 2026-09-19 19:59 與最新 main 分支合併
+- **做了什麼改動**：執行 git pull dogbark main，將遠端最新加入的測試腳本（smoke.js）、環境文件與路由權限（requestId, sameOrigin）完整合併至 dogbark_v2。在遇到合併衝突時，堅持保留我們最新的 3-tier Hybrid TTS 架構 (	tsService.js, outes/tts.js, 	ts.js) 與本清理過的開發日誌。
+- **功能目的**：確保 2 同時具備最新的基礎設施更新與我們測試通過的終極語音模組，使其成為最新、最穩定的專案版本。
