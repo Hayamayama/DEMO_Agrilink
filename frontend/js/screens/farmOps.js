@@ -10,6 +10,9 @@ const niceDate = (iso) => new Intl.DateTimeFormat('en', { day:'numeric', month:'
 const requestId = () => globalThis.crypto?.randomUUID?.() || `farm-${Date.now()}-${Math.random()}`;
 const message = (text, cls='ops-empty') => el(cls, text);
 // "Today" in the farm's timezone: Cloud Phone renders in CloudMosa's cloud, whose clock and zone are not the farmer's.
+// Event times in the farm's own timezone: the cloud browser's clock and
+// locale are CloudMosa's, not the farmer's. Same month style as niceDate ("Sep 19 17:31").
+const farmTime = (iso, tz) => new Intl.DateTimeFormat('en', { timeZone: tz || 'UTC', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hourCycle:'h23' }).format(new Date(iso)).replace(',', '');
 const farmToday = (tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
 // Errors go to the shared toast bar; native alert() dialogs are not verified on Cloud Phone keypads.
 let flashTimer=null;
@@ -190,7 +193,7 @@ export const FarmTaskDetail = asyncScreen({ name:'FarmTaskDetail',title:'Task De
   renderData(data){const t=data.item,root=el('ops-page');root.append(el(`ops-priority priority-${t.priority}`,`${t.priority.toUpperCase()} · ${t.type.toUpperCase()}`),el('ops-detail-title',t.title),el('ops-task-meta',`${t.fieldName||'No field'} · ${niceDate(t.localDate)}`),el('ops-task-meta',`${STATUS[t.status]||t.status}${t.assignments?.[0]?` · ${t.assignments[0].name}`:''}`));
     const why={blocked:t.blocked_reason,delayed:t.delayed_reason,cancelled:t.cancelled_reason}[t.status];if(why)root.append(el('ops-reason',`${REASON_LABEL[t.status]}: ${why}`));
     if(t.description)root.append(el('ops-description',t.description));const spray=data.sprayAssessment;if(spray)spraySection(root,spray);if(data.checklist.length){root.append(el('ops-section-title',`CHECKLIST · ${data.checklist.filter(x=>x.completed_at).length}/${data.checklist.length}`));for(const c of data.checklist){const r=el('item ops-checklist');r.dataset.item=c.id;r.dataset.done=c.completed_at?'1':'';r.textContent=`${c.completed_at?'✓':'□'} ${c.label}`;root.append(r);}}
-    actionRows(root,t);root.append(el('ops-section-title','HISTORY'));data.events.slice(-4).reverse().forEach(e=>root.append(el('ops-history',`${new Date(e.created_at).toLocaleString()} · ${historyLabel(e)}`)));return root;},
+    actionRows(root,t);root.append(el('ops-section-title','HISTORY'));data.events.slice(-4).reverse().forEach(e=>root.append(el('ops-history',`${farmTime(e.created_at,farmOps.activeFarm?.timezone)} · ${historyLabel(e)}`)));return root;},
   async onEnter(node,ctx,_i,data){if(detailActionBusy||!node)return;const id=ctx.params.id;
     if(node.dataset.options)return ctx.router.push('ForumPicker',{title:'Task options',options:optionsFor(data.item,farmOps.activeFarm?.role),onPick:(o,c)=>runOption(c,data.item,o.value)});
     if(node.dataset.report)return reasonPicker(ctx,id,'block',false);
@@ -235,7 +238,7 @@ const datedRow=(t,meta)=>{const r=el(`item ops-task-row priority-${t.priority||'
 const openTask=(node,ctx)=>{if(node?.dataset.id)ctx.router.push('FarmTaskDetail',{id:node.dataset.id});};
 
 export const FarmRecords = asyncScreen({name:'FarmRecords',title:'Farm Records',load:()=>api.records(farmOps.activeFarmId),
-  renderData(data){const root=el('list');data.items.forEach((r,i)=>{const x=el('item ops-record-row');x.dataset.i=i;x.append(el('',r.task_title||words(r.record_type)),el('ops-task-meta',`${String(r.local_date).slice(0,10)} · ${r.actor_name||'System'}`));root.append(x);});return data.items.length?root:message('No farm records yet. Completing work creates records.');},
+  renderData(data){const root=el('list');data.items.forEach((r,i)=>{const x=el('item ops-record-row');x.dataset.i=i;x.append(el('',r.task_title||words(r.record_type)),el('ops-task-meta',`${niceDate(String(r.local_date).slice(0,10))} · ${r.actor_name||'System'}`));root.append(x);});return data.items.length?root:message('No farm records yet. Completing work creates records.');},
   onEnter(node,ctx,_i,data){const r=data?.items[Number(node?.dataset.i)];if(r)ctx.router.push('FarmRecordDetail',{record:r});}});
 
 export const FarmRecordDetail = { name:'FarmRecordDetail',title:'Record',softRight:{label:'Back',handler:(ctx)=>ctx.router.pop()},
