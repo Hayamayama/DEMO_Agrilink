@@ -210,6 +210,7 @@ curl -s https://<host>/api/ai/capabilities  # 應回 {"ok":true,...}
 | 問題 | 位置 | 狀態 |
 |---|---|---|
 | VM 還是 Node 18；repo 已統一為 22 | VM | 照第 8 節「Node 版本」在 VM 上升級 |
+| TTS：線上是 v3（手機 `speechSynthesis` 朗讀），但裝置缺越南語／孟加拉語語音包時會用中文發音；craby168 的 v2（伺服器產生 MP3 + Gemini 備援）還沒合併 | `services/ttsService.js`、`routes/tts.js`、`frontend/js/tts.js`；v2 在 `70efa82` | 等 craby168 測完後合併，見 `devlog-kris.md` |
 | 噴藥「最佳時段」寫死 06:00–10:00，畫面看起來像是算出來的 | `services/sprayAssessment.js` | 計畫第 3 項 |
 | Weather 與 Today's Farm 用兩套噴藥規則，同一地點可能結論相反 | `weatherService.advise()` vs `assessSprayConditions()` | 計畫第 3 項 |
 | `server.js` 的功能啟用邏輯沒有測試 | `server.js` | 計畫第 4 項（`createApp`）|

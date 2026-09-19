@@ -461,3 +461,28 @@
 - VM 上 demo 帳號的 PIN 是 VM `.env` 的 `DEMO_USER_PIN`，不一定是 `246810`。新帳號要在 VM 出現：`SEED_DEMO_DATA=true` 後重啟服務（論壇＋農場），Local Market 另外執行 `npm run market:seed`。
 - VM 升級 Node 22 的步驟在 `CODEBASE_STATUS.md`「部署 > Node 版本」；升級會重啟服務，請先和大家約時間。
 - 新增 demo 貼文或刊登時，`tests/forum.test.js`、`permissions.test.js`、`marketSeed.test.js`、`farmOps.test.js` 裡的數量斷言要一起改。
+
+---
+
+## 202609191933 GMT+8 — main 的 TTS 衝突：先保留線上 v3 部署，之後再合併 v2
+
+### 發現／問題
+
+- craby168 的 `70efa82`（19:06，"Overwrite v3 with perfect v2 Hybrid TTS"）把**沒解決的衝突標記**（`<<<<<<<` / `=======` / `>>>>>>>`，共 8 行）commit 進 `backend/services/ttsService.js`，語法錯誤，`server.js` 一啟動就 crash。它只有一個 parent（`b49382c`），不是 merge commit，推測是本機衝突沒解決就整檔 commit。VM 當時停在 `45321bc`，線上沒受影響。
+- 衝突兩邊：
+  - **v3（線上版，18:23 `a9bdef1`）**：後端只翻譯、回傳 `{ ok, text }`，手機用瀏覽器的 `speechSynthesis` 朗讀。
+  - **v2 Hybrid（只存在於 `70efa82` 的衝突檔）**：後端用 google-translate-api-x 產生 MP3，被擋時改用 Gemini `gemini-1.5-flash-8b` 產生語音，回傳 `{ audio, mimeType }`。
+- craby168 改 v2 的原因（見 `devlog_Will.md` 18:58）：**裝置缺少東南亞語音包，越南語／孟加拉語會被瀏覽器用中文發音唸出來**。這是 v3 的真問題，合併時要解決。
+- 若直接採用 v2 會有的問題：`routes/tts.js` 送出 `result.text`、`frontend/js/tts.js` 用 `speechSynthesis`，兩者都沒改，所以按 `#` 會唸不出東西；VM 的 IP 向 Google 要 MP3 曾被擋（503，同一份 devlog 18:15）；`gemini-1.5-flash-8b` 很可能不支援語音輸出；API key 放在網址參數（`?key=`）而不是 header。
+
+### 做了什麼改動
+
+- 決定（與 kris 討論）：**先保留線上的 v3 並部署**；等 craby168 測完 v2，再一起想辦法合併。
+- `a6fe511`：`ttsService.js` 還原成線上 v3（與 `b49382c` 完全相同）；`devlog_Will.md` 兩段紀錄都保留、依時間排序、拿掉衝突標記，18:58 那段從 Big5 轉回 UTF-8（內容無損）。
+- 我的 `engineering-quality` 分支 rebase 到這個修正之後，fast-forward 進 main。
+
+### 組員注意事項
+
+- **@craby168**：v2 Hybrid 的程式碼在 `70efa82`（`git show 70efa82:backend/services/ttsService.js`，看 `<<<<<<< HEAD` 那段）。合併時請把後端回傳格式、`routes/tts.js`、`frontend/js/tts.js` 一起改，並在 VM 上實測 Google MP3 會不會被擋、Gemini 語音模型能不能用。建議開分支或 PR，CI 會先跑測試和 smoke，衝突標記這類錯誤會在合併前被擋下。
+- 可以考慮的折衷：保留 v3（手機朗讀），只在瀏覽器沒有該語言的語音時（`speechSynthesis.getVoices()` 找不到 `vi` / `bn`）才向後端要音檔。
+- push 前請先跑 `npm test`；`git grep -n '^<<<<<<<'` 可以檢查有沒有漏掉的衝突標記。
