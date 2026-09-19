@@ -13,6 +13,7 @@
     "forum:seed": "node db/forumSeed.js",
     "forum:dev": "node dev/forumDevServer.js",
     "admin:create": "node db/createAdmin.js",
+    "mandi:sync": "node db/syncMandi.js",
     "ceda:catalog": "node db/syncCeda.js catalog",
     "ceda:geographies": "node db/syncCeda.js geographies",
     "ceda:markets": "node db/syncCeda.js markets",

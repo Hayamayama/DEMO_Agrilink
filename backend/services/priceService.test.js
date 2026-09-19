@@ -116,3 +116,15 @@ test('price change and the analysis ignore prices older than the recent window',
   assert.equal(d.markets.find((m) => m.code === 'ceda-3452').days_from_home, 1);
   assert.equal(d.analysis.recommendation, 'steady'); // June's 3000 is outside the two-week average
 });
+
+test('with the member\'s location both trips start from the member', () => {
+  const here = { lat: 28.8, lng: 79.03 };                       // Rampur
+  const near = { name: 'Near', price: 2500, lat: 28.84, lng: 79.0 };  // ~6 km
+  const far = { name: 'Far', price: 2700, lat: 28.37, lng: 79.43 };   // Bareilly-ish, ~77 km
+  const n = netProfit({ from: near, to: far, qty: 2, here });
+  assert.ok(n.from_distance_km < 10 && n.distance_km > 60);
+  const extra = Math.round(n.distance_km * 1.5) - Math.round(n.from_distance_km * 1.5);
+  assert.ok(Math.abs(n.transport_per_qt - extra) <= 2);
+  assert.equal(n.gain_per_qt, 200 - n.transport_per_qt);
+  assert.equal(n.gain_total, n.gain_per_qt * 2);
+});
