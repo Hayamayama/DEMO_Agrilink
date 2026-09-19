@@ -51,6 +51,19 @@ test('demo seed is complete and idempotent', async () => {
   } finally { await t.close(); }
 });
 
+test('existing Test_Admin is added to the demo farm as an active owner', async () => {
+  const t = await setup();
+  try {
+    const phone = `98${String(Date.now()).slice(-8)}`;
+    const { user } = await t.auth.signup({ phone, pin: '246810', displayName: 'Test_Admin', village: 'Admin Village', regionId: (await t.pool.query(`SELECT id FROM app.regions WHERE code='IN-BR'`)).rows[0].id });
+    await t.pool.query(`UPDATE app.users SET role='admin' WHERE id=$1`, [user.id]);
+    const seeded = await seedFarmOps(t.pool, { demoDate: '2026-09-19' });
+    const membership = (await t.pool.query(`SELECT role,status FROM app.farm_members WHERE farm_id=$1 AND user_id=$2`, [FARM_DEMO_ID,user.id])).rows[0];
+    assert.equal(seeded.testAdminOwner, true);
+    assert.deepEqual(membership, { role: 'owner', status: 'active' });
+  } finally { await t.close(); }
+});
+
 test('task creation is idempotent and manager-only', async () => {
   const t = await setup();
   try {

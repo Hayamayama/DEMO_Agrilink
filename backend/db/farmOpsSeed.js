@@ -18,6 +18,8 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
   const arjun = byKey.get('10000003');
   const viewer = byKey.get('10000004');
   const manager = byKey.get('10000005');
+  const testAdmin = (await pool.query(`SELECT p.user_id,p.display_name FROM app.user_profiles p
+    JOIN app.users u ON u.id=p.user_id WHERE lower(p.display_name)=lower('Test_Admin') AND u.status='active' LIMIT 1`)).rows[0] || null;
   const farmId = FARM_DEMO_ID;
   const fieldA = id('field-a'); const fieldB = id('field-b'); const vegetable = id('vegetable-plot');
   const riceA = id('rice-cycle-a'); const riceB = id('rice-cycle-b'); const tomato = id('tomato-cycle');
@@ -35,6 +37,9 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
       await client.query(`INSERT INTO app.farm_members(farm_id,user_id,role,status,accepted_at) VALUES ($1,$2,$3,'active',now())
         ON CONFLICT(farm_id,user_id) DO UPDATE SET role=EXCLUDED.role,status='active',removed_at=NULL`, [farmId, m.user_id, role]);
     }
+    if (testAdmin) await client.query(`INSERT INTO app.farm_members(farm_id,user_id,role,status,accepted_at)
+      VALUES ($1,$2,'owner','active',now()) ON CONFLICT(farm_id,user_id) DO UPDATE SET role='owner',status='active',removed_at=NULL`,
+    [farmId,testAdmin.user_id]);
     const fields = [[fieldA,'Field A',1.2,'pump'],[fieldB,'Field B',0.8,'canal'],[vegetable,'Vegetable Plot',0.3,'drip']];
     for (const [fieldId,name,area,irrigation] of fields) await client.query(`INSERT INTO app.farm_fields(id,farm_id,name,area_value,area_unit,irrigation_type)
       VALUES ($1,$2,$3,$4,'ha',$5) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,area_value=EXCLUDED.area_value,
@@ -144,7 +149,7 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
       ON CONFLICT(id) DO UPDATE SET user_id=EXCLUDED.user_id,type=EXCLUDED.type,title=EXCLUDED.title,body=EXCLUDED.body,task_id=EXCLUDED.task_id`,
     [id(`notification-${key}`),farmId,userId,type,title,body,linkedTask,`demo:${key}`]);
     await client.query('COMMIT');
-    return {farmId,demoDate,members:5,fields:fields.length,cropCycles:cycles.length,tasks:tasks.length,records:records.length,templates:templates.length,notifications:notifications.length};
+    return {farmId,demoDate,members:5+(testAdmin?1:0),testAdminOwner:Boolean(testAdmin),fields:fields.length,cropCycles:cycles.length,tasks:tasks.length,records:records.length,templates:templates.length,notifications:notifications.length};
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }
 
