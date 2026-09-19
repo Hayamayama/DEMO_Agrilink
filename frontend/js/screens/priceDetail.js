@@ -8,7 +8,7 @@ async function load(ctx) {
   loading = true; error = null;
   const { crop, market } = ctx.params;
   try {
-    calc = await getJSON(`/api/prices/net-profit?crop=${crop}&region=${user.region}&from=rampur&to=${market.code}&qty=${qty}`);
+    calc = await getJSON(`/api/prices/net-profit?crop=${crop}&region=${user.region}&from=${user.homeMarket}&to=${market.code}&qty=${qty}`);
   } catch {
     calc = null; error = 'Calculation unavailable';
   }

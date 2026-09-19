@@ -6,7 +6,7 @@ import { memoryRepo } from './priceRepo.js';
 const svc = createPriceService(memoryRepo(() => Date.parse('2026-09-19T00:00:00Z')));
 
 test('getPrices returns home market first with 3 markets and flags sample data', async () => {
-  const d = await svc.getPrices({ crop: 'rice', region: 'IN-UP-01' });
+  const d = await svc.getPrices({ crop: 'rice', region: 'IN-UP-01', home: 'rampur' });
   assert.equal(d.markets.length, 3);
   assert.equal(d.markets[0].code, 'rampur');
   assert.equal(d.markets[0].distance_km, 0);
@@ -28,7 +28,7 @@ test('analyze: rising -> wait, falling -> sell_now, flat -> hold', () => {
 });
 
 test('demo data trends up so the wait advice is shown', async () => {
-  const d = await svc.getPrices({ crop: 'rice', region: 'IN-UP-01' });
+  const d = await svc.getPrices({ crop: 'rice', region: 'IN-UP-01', home: 'rampur' });
   assert.equal(d.analysis.recommendation, 'wait');
 });
 
@@ -49,4 +49,16 @@ test('getNetProfit rejects unknown market', async () => {
 
 test('distanceKm is ~0 for same point', () => {
   assert.equal(Math.round(distanceKm({ lat: 1, lng: 1 }, { lat: 1, lng: 1 })), 0);
+});
+
+test('home market comes first even if the repo returns rows in a different order', async () => {
+  const shuffled = createPriceService({
+    async history(c, r) { return (await memoryRepo(() => Date.parse('2026-09-19T00:00:00Z')).history(c, r)).reverse(); },
+  });
+  const d = await shuffled.getPrices({ crop: 'rice', region: 'IN-UP-01', home: 'rampur' });
+  assert.equal(d.markets[0].code, 'rampur');
+  assert.equal(d.home, 'rampur');
+  assert.equal(d.markets[0].distance_km, 0);
+  assert.equal(d.markets[0].trend.length, 7);
+  assert.ok(d.markets[0].trend[6] > d.markets[0].trend[0]); // oldest -> newest despite reversed input
 });

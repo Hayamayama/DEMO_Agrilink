@@ -221,3 +221,17 @@
   - **線上目前仍走記憶體假資料**。要切到 Postgres：主機 `~/dogbark/backend/.env` 加 `DATABASE_URL`（`chmod 600`）→ `node db/seed.js`（以 app 角色灌 regions/crops/markets/sample 價格）→ `sudo systemctl restart agrilink`，日誌應顯示 `prices: using Postgres`。
   - 灌資料會寫入 `regions`（`IN-UP-01`）與 `crops`（rice/wheat/onion/tomato），皆 `ON CONFLICT DO NOTHING`；若其他人已用不同 code 種了 regions/crops，請先協調避免重複。
   - 切到 DB 後若價格頁報「Prices unavailable」，先看 `journalctl -u agrilink`；DB 掛掉時目前**不會**自動退回假資料（只在未設 `DATABASE_URL` 時才用）。
+
+## 202609191328 · 切換到 PostgreSQL + 修「Your area」顯示錯誤
+
+- **發現的問題**
+  - 切到 DB 後驗證發現：列表第一個市場被當成「Your area」，但 pgRepo 依市場代碼字母排序（Bareilly → Moradabad → Rampur），所以**線上「Your area」實際是 Bareilly**。記憶體版按插入順序剛好 Rampur 在前，所以本機測試沒抓到。舊測試也隱含這個「第一個就是自己地區」的假設。
+  - 同時 service 假設 repo 回傳的資料已按日期排好，pg 版 ORDER BY 有做，但這是隱含耦合。
+- **想解決什麼**：讓「自己的市場」由明確參數決定，不依賴 repo 排序。
+- **做了什麼改動**
+  - 主機：`backend/.env` 寫入 `DATABASE_URL`（權限 600，不在 git）；`node db/seed.js` 寫入 84 筆 sample 價格（1 region、4 crops、3 markets）；服務日誌確認 `prices: using Postgres`。
+  - `state.js` 新增 `user.homeMarket = 'rampur'`；行情頁 / 淨利頁改傳 `home=`、`from=`，不再寫死；`priceService` 內部先按代碼與日期排序；新增「repo 順序顛倒時 home 仍在最前 + 走勢由舊到新」測試（共 12 項通過）。
+- **給組員的注意事項**
+  - **呼叫 `/api/prices` 一定要帶 `home=<市場代碼>`**，否則預設取字母序第一個；之後 home 應改由使用者 profile 決定。
+  - 寫 repo/service 時**不要假設資料庫回傳順序**；本機記憶體版與 Postgres 的行為要都測。
+  - 修正版本尚待部署（部署前線上「Your area」仍是 Bareilly）。

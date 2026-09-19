@@ -21,6 +21,7 @@ const override = q.get('lat') && q.get('lng')
 export const user = {
   // price data currently exists only for this region (see backend/db/seedData.js)
   region: 'IN-UP-01',
+  homeMarket: 'rampur', // profile's nearest market; becomes profile data later
   get location() { return override || LOCATIONS[index]; },
   nextLocation() {
     index = (index + 1) % LOCATIONS.length;

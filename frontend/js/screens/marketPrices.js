@@ -8,7 +8,7 @@ let ci = 0, data = null, error = null, loading = false, lastIdx = 0;
 async function load(ctx) {
   loading = true; error = null;
   try {
-    data = await getJSON(`/api/prices?crop=${CROPS[ci][0]}&region=${user.region}`);
+    data = await getJSON(`/api/prices?crop=${CROPS[ci][0]}&region=${user.region}&home=${user.homeMarket}`);
   } catch {
     data = null; error = 'Prices unavailable';
   }

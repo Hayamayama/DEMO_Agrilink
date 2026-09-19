@@ -36,6 +36,7 @@ export function createPriceService(repo) {
   async function load(crop, region) {
     const rows = await repo.history(crop, region);
     const byMarket = new Map();
+    rows.sort((a, b) => a.date.localeCompare(b.date)); // oldest -> newest, independent of repo order
     for (const r of rows) {
       if (!byMarket.has(r.market_code)) byMarket.set(r.market_code, []);
       byMarket.get(r.market_code).push(r);
@@ -56,6 +57,7 @@ export function createPriceService(repo) {
         trend: rows.slice(-7).map((r) => r.modal),
       };
     });
+    markets.sort((a, b) => a.code.localeCompare(b.code)); // deterministic regardless of repo ordering
     const homeMarket = markets.find((m) => m.code === home) || markets[0];
     markets.sort((a, b) => (a === homeMarket ? -1 : b === homeMarket ? 1 : a.name.localeCompare(b.name)));
     for (const m of markets) m.distance_km = Math.round(distanceKm(homeMarket, m) * ROAD_FACTOR);
