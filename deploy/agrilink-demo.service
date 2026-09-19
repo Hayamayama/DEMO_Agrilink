@@ -1,0 +1,16 @@
+[Unit]
+Description=AgriLink guided demo backend
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/DEMO_Agrilink/backend
+Environment=PORT=3001
+EnvironmentFile=-/home/ubuntu/DEMO_Agrilink/backend/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

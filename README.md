@@ -32,4 +32,7 @@ weather, price or AI services are slow or unavailable.
 
 - Product/security/provider bugs belong upstream first; then bring the fix here.
 - Demo-only data, journeys and presentation stay here.
-- Do not deploy this repository to the formal AgriLink VM.
+- Do not replace or alter the formal AgriLink service. The demo deployment is a
+  second service (`agrilink-demo`, port 3001), database (`agrilink_demo`) and
+  hostname (`demo-203-116-30-130.sslip.io`). Run `deploy/setup-demo-vm.sh` on
+  the VM only after reviewing its separate-service boundary.
