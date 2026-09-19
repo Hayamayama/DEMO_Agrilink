@@ -119,7 +119,7 @@ export function createAuthService(pool, env = process.env) {
     if (!await matchesPin(cleanPin, row.pin_hash)) {
       const failures = Number(row.failed_attempts) + 1;
       await pool.query(
-        `UPDATE app.auth_credentials SET failed_attempts=$2, locked_until=CASE WHEN $2 >= $3 THEN now() + interval '15 minutes' ELSE NULL END, updated_at=now() WHERE user_id=$1`,
+        `UPDATE app.auth_credentials SET failed_attempts=$2::smallint, locked_until=CASE WHEN $2::smallint >= $3::smallint THEN now() + interval '15 minutes' ELSE NULL END, updated_at=now() WHERE user_id=$1`,
         [row.id, failures, MAX_FAILURES],
       );
       throw coded('INVALID_LOGIN', failures >= MAX_FAILURES ? 'Too many attempts. Try again in 15 minutes.' : 'Phone number or PIN is incorrect.', failures >= MAX_FAILURES ? 429 : 401);
