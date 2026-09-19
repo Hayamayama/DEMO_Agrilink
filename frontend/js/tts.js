@@ -20,12 +20,12 @@ function hideToast(delay = 1200) {
 }
 
 export async function readAloud(text, language = 'en') {
-  stop();
+  stop(); // ensures everything is clear before starting
 
   if (!text || !text.trim()) return;
 
-  const controller = new AbortController();
-  currentAbort = controller;
+  currentAbort = new AbortController();
+  const signal = currentAbort.signal;
 
   showToast('Connecting to TTS Service...');
 
@@ -34,26 +34,33 @@ export async function readAloud(text, language = 'en') {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text, language }),
-      signal: controller.signal,
+      signal: signal,
     });
+
+    if (signal.aborted) return;
 
     const contentType = res.headers.get('content-type') || '';
 
     if (contentType.includes('application/json')) {
       const body = await res.json().catch(() => null);
+      if (signal.aborted) return;
       const errCode = body?.error?.code || 'ERR_UNKNOWN';
       showToast(`TTS Failed: ${errCode}`);
       hideToast(3000);
+      currentAbort = null;
       return;
     }
 
     if (!res.ok) {
       showToast('TTS Failed: Network Error');
       hideToast(2000);
+      currentAbort = null;
       return;
     }
 
     const blob = await res.blob();
+    if (signal.aborted) return;
+
     const url = URL.createObjectURL(blob);
     currentAudio = new Audio(url);
     
@@ -64,12 +71,14 @@ export async function readAloud(text, language = 'en') {
     currentAudio.onended = () => {
       URL.revokeObjectURL(url);
       currentAudio = null;
+      currentAbort = null; // Clean up so `#` triggers reading again
       hideToast(0);
     };
 
     currentAudio.onerror = (e) => {
       URL.revokeObjectURL(url);
       currentAudio = null;
+      currentAbort = null;
       showToast('Audio Playback Error');
       console.error('Audio element error:', e);
       hideToast(3000);
@@ -83,13 +92,15 @@ export async function readAloud(text, language = 'en') {
       console.error('Play error (Auto-play blocked?):', playErr);
       showToast('Auto-play blocked by browser');
       hideToast(3000);
+      currentAbort = null;
     }
     
   } catch (err) {
-    if (err.name === 'AbortError') return;
+    if (err.name === 'AbortError') return; // intentional stop
     console.error('TTS Fetch failed:', err);
     showToast('TTS Network Request Failed');
     hideToast(3000);
+    currentAbort = null;
   }
 }
 
@@ -109,6 +120,7 @@ export function stop() {
   if (toastEl) toastEl.hidden = true;
 }
 
+// isPlaying now checks if a session is active (either fetching OR playing)
 export function isPlaying() {
-  return currentAudio && !currentAudio.paused;
+  return currentAbort !== null;
 }
