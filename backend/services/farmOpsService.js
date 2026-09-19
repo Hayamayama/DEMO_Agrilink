@@ -97,7 +97,7 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
     const todays = rows.filter((t) => t.localDate === day);
     const [weather, prices, communityActivity] = await Promise.all([
       weatherForFarm(farm),
-      farmPriceService?.getFarmPrices({ id: farm.id, stateName: 'Uttar Pradesh' }, 'rice').catch(() => null) || null,
+      farmPriceService?.getFarmPrices(farm, 'rice').catch(() => null) || null,
       communityFor(user, day),
     ]);
     const sprayAssessment = todays.some((t) => ['spraying','fertilizer'].includes(t.type)) && weather ? assessSprayConditions(weather) : null;
@@ -137,7 +137,7 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
   async function prices(user, farmId, crop = 'rice') {
     const farm = await membership(user.id, farmId);
     if (!farmPriceService) return { item: null };
-    return { item: await farmPriceService.getFarmPrices({ id: farm.id, stateName: 'Uttar Pradesh' }, crop) };
+    return { item: await farmPriceService.getFarmPrices(farm, crop) };
   }
 
   async function sprayAssessment(user, farmId, requestedDate) {

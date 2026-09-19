@@ -30,7 +30,7 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
   try {
     await client.query('BEGIN');
     await client.query(`INSERT INTO app.farms(id,name,owner_user_id,country_code,region_code,timezone,latitude,longitude)
-      VALUES ($1,'Green Field Cooperative',$2,'IN','IN-UP-01','Asia/Kolkata',26.84670,80.94620)
+      VALUES ($1,'Green Field Cooperative',$2,'IN','IN-UP-LKO','Asia/Kolkata',26.84670,80.94620)
       ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,owner_user_id=EXCLUDED.owner_user_id,country_code=EXCLUDED.country_code,
         region_code=EXCLUDED.region_code,timezone=EXCLUDED.timezone,latitude=EXCLUDED.latitude,longitude=EXCLUDED.longitude,updated_at=now()`, [farmId, owner.user_id]);
     for (const [m, role] of [[owner,'owner'],[manager,'manager'],[asha,'worker'],[arjun,'worker'],[viewer,'viewer']]) {

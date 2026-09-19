@@ -9,7 +9,6 @@ import { pricesRouter } from './routes/prices.js';
 import { createPool } from './db/pool.js';
 import { memoryRepo, pgRepo } from './services/priceRepo.js';
 import { createPriceService, createFarmPriceService } from './services/priceService.js';
-import { createMandiPriceProvider } from './providers/mandiPriceProvider.js';
 import { createPriceCacheRepository } from './repositories/priceCacheRepository.js';
 import { getWeather } from './services/weatherService.js';
 import { createAuthService } from './services/authService.js';
@@ -94,7 +93,7 @@ if (pool) {
     try {
       await pool.query('SELECT 1 FROM app.farms LIMIT 0');
       if (process.env.SEED_DEMO_DATA === 'true') await seedFarmOps(pool);
-      const farmPriceService = createFarmPriceService({ provider: createMandiPriceProvider(), cache: createPriceCacheRepository(pool) });
+      const farmPriceService = createFarmPriceService({ prices, cache: createPriceCacheRepository(pool) }); // same synced data as /api/prices
       app.use('/api/farms', createFarmOpsRouter({ pool, auth, farmPriceService, weatherGetter: getWeather }).router);
       console.log("farm ops: Today's Farm enabled");
     } catch (err) {
