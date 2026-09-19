@@ -36,6 +36,9 @@ export async function makeDb() {
   await db.exec(migration('001_foundation.sql').replace(/CREATE EXTENSION[^;]*;/, '')); // gen_random_uuid() is built in
   await db.exec(migration('004_identity_admin.sql'));
   await db.exec(migration('005_forum.sql'));
+  await db.exec(migration('007_farm_operations.sql'));
+  await db.exec(migration('008_region_coordinates.sql'));
+  await db.exec(migration('011_farm_live_data.sql'));
   return { db, pool: pgPool(db) };
 }
 

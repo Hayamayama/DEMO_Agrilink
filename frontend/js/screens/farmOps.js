@@ -24,6 +24,22 @@ const section = (root, title, items) => {
   root.append(el('ops-section-title', `${title} · ${items.length}`));
   items.forEach((t)=>root.append(taskRow(t)));
 };
+const weatherRow = (data) => {
+  if (!data.weather) return null;
+  const w=data.weather.current||{}, a=data.sprayAssessment;
+  const temp=Math.round(w.temperatureC??w.temp??0), wind=Math.round(w.windSpeedKph??w.wind_speed??0), humidity=Math.round(w.relativeHumidity??w.humidity??0);
+  const row=el(`ops-live-row ops-weather ops-${a?.overall||'unknown'}`);
+  row.append(el('ops-live-main',`☀ ${temp}°C · W ${wind}km/h · H ${humidity}%`),
+    el('ops-live-meta',a?`SPRAY: ${a.overall.toUpperCase()} · ${a.bestWindow.from}–${a.bestWindow.to}`:'No spray task'));
+  return row;
+};
+const marketRow = (m) => {
+  if(!m)return null; const arrow=String(m.trend7d).startsWith('-')?'▼':'▲';
+  const row=el('ops-live-row ops-market');
+  row.append(el('ops-live-main',`📊 ${m.crop.toUpperCase()} ₹${Math.round(m.localPrice)}/qt ${arrow}${m.trend7d}`),
+    el('ops-live-meta',m.bestNearbyMarket?`${m.bestNearbyMarket}: ${m.netGainPerUnit>=0?'+':''}₹${m.netGainPerUnit??'?'} /qt net · ${m.source}`:`Source: ${m.provider} · ${m.source}`));
+  return row;
+};
 
 function asyncScreen({ name, title=name, load, renderData, softLeft, onKey, onEnter, initialFocus }) {
   let state={ status:'idle', data:null, error:null };
@@ -50,9 +66,9 @@ function ensureFarm(ctx){ if(!farmOps.activeFarmId){ctx.router.replace('FarmGate
 export const TodayDashboard = asyncScreen({
   name:'TodayDashboard',title:()=>"Today's Farm",softLeft:{label:'Add',handler:(ctx)=>ctx.router.push('FarmTaskCreate')},
   load(ctx){ if(!ensureFarm(ctx)) return Promise.reject(new Error('Choose a farm')); return api.today(farmOps.activeFarmId,farmOps.activeDate); },
-  renderData(data){ const root=el('ops-page'); root.append(el('ops-date-switcher',`${data.farm.name} · ${niceDate(data.date)}`),el('ops-progress',`${data.summary.completed} / ${data.summary.total} complete · ${data.summary.inProgress} active · ${data.summary.blocked} blocked`)); if(data.alerts?.[0])root.append(el('ops-alert',data.alerts[0].message)); section(root,'OVERDUE',data.sections.overdue);section(root,'BLOCKED',data.sections.blocked);section(root,'IN PROGRESS',data.sections.inProgress);section(root,'DUE TODAY',data.sections.due);section(root,'UNASSIGNED',data.sections.unassigned);section(root,'COMPLETED',data.sections.completed); if(!root.querySelector('.ops-task-row'))root.append(message('No work scheduled. Press Add.')); root.append(el('ops-task-meta','◄► day · 2 Calendar · 3 Next 7 days · 4 Mine · 5 Records · 6 Team · 7 Fields')); return root; },
+  renderData(data){ const root=el('ops-page'); root.append(el('ops-date-switcher',`${data.farm.name} · ${niceDate(data.date)}`),el('ops-progress',`${data.summary.completed} / ${data.summary.total} complete · ${data.summary.inProgress} active · ${data.summary.blocked} blocked`)); const wr=weatherRow(data),mr=marketRow(data.marketSnapshot);if(wr)root.append(wr);if(mr)root.append(mr);if(data.alerts?.[0])root.append(el('ops-alert',data.alerts[0].message)); section(root,'OVERDUE',data.sections.overdue);section(root,'BLOCKED',data.sections.blocked);section(root,'IN PROGRESS',data.sections.inProgress);section(root,'DUE TODAY',data.sections.dueToday||data.sections.due);section(root,'UNASSIGNED',data.sections.unassigned);const c=data.communityActivity;if(c&&(c.unreadReplies||c.newPostsToday)){const row=el('item ops-community',`🌾 Circle: ${c.unreadReplies} new replies · ${c.newPostsToday} posts`);row.dataset.route='FarmerCircleHome';root.append(row);}section(root,'COMPLETED',data.sections.completedToday||data.sections.completed); if(!root.querySelector('.ops-task-row'))root.append(message('No work scheduled. Press Add.')); root.append(el('ops-task-meta','◄► day · 2 Calendar · 3 Next 7 days · 4 Mine · 5 Records · 6 Team · 7 Fields')); return root; },
   onKey(action,ctx){ const map={NUM_2:'FarmCalendar',NUM_3:'FarmUpcoming',NUM_4:'MyFarmTasks',NUM_5:'FarmRecords',NUM_6:'FarmTeam',NUM_7:'FarmFields'}; if(map[action]){ctx.router.push(map[action]);return true;} if(action==='LEFT'||action==='RIGHT'){farmOps.activeDate=dateShift(farmOps.activeDate,action==='LEFT'?-1:1);ctx.router.replace('TodayDashboard');return true;} },
-  onEnter(node,ctx){const id=node?.dataset.id;if(id)ctx.router.push('FarmTaskDetail',{id});},
+  onEnter(node,ctx){if(node?.dataset.route)return ctx.router.push(node.dataset.route);const id=node?.dataset.id;if(id)ctx.router.push('FarmTaskDetail',{id});},
 });
 
 export const FarmUpcoming = asyncScreen({ name:'FarmUpcoming',title:'Upcoming',softLeft:{label:'Add',handler:(ctx)=>ctx.router.push('FarmTaskCreate')},
@@ -84,7 +100,7 @@ const actionFor=(task,role)=> {
 };
 export const FarmTaskDetail = asyncScreen({ name:'FarmTaskDetail',title:'Task Detail',
   load:(ctx)=>api.detail(ctx.params.id),
-  renderData(data){const t=data.item,root=el('ops-page');root.append(el(`ops-priority priority-${t.priority}`,`${t.priority.toUpperCase()} · ${t.type.toUpperCase()}`),el('ops-detail-title',t.title),el('ops-task-meta',`${t.fieldName||'No field'} · ${niceDate(t.localDate)}`),el('ops-task-meta',STATUS[t.status]||t.status));if(t.description)root.append(el('ops-description',t.description));if(data.checklist.length){root.append(el('ops-section-title',`CHECKLIST · ${data.checklist.filter(x=>x.completed_at).length}/${data.checklist.length}`));for(const c of data.checklist){const r=el('item ops-checklist');r.dataset.item=c.id;r.dataset.done=c.completed_at?'1':'';r.textContent=`${c.completed_at?'✓':'□'} ${c.label}`;root.append(r);}}const a=actionFor(t,farmOps.activeFarm?.role);if(a){const r=el('item ops-action',`${a[1]} task`);r.dataset.action=a[0];root.append(r);}if(t.status==='in_progress'&&t.assignments?.some((x)=>x.userId===identity.profile?.id)){const r=el('item ops-action','Report problem');r.dataset.action='block';root.append(r);}root.append(el('ops-section-title','HISTORY'));data.events.slice(-4).reverse().forEach(e=>root.append(el('ops-history',`${new Date(e.created_at).toLocaleString()} · ${e.to_status||e.event_type}`)));return root;},
+  renderData(data){const t=data.item,root=el('ops-page');root.append(el(`ops-priority priority-${t.priority}`,`${t.priority.toUpperCase()} · ${t.type.toUpperCase()}`),el('ops-detail-title',t.title),el('ops-task-meta',`${t.fieldName||'No field'} · ${niceDate(t.localDate)}`),el('ops-task-meta',STATUS[t.status]||t.status));if(t.description)root.append(el('ops-description',t.description));const spray=data.sprayAssessment;if(spray){root.append(el('ops-section-title',`SPRAY CONDITIONS · ${spray.overall.toUpperCase()}`));for(const f of spray.factors){root.append(el(`ops-spray-factor ops-${f.status}`,`${f.param}: ${f.value}${f.unit||''} · ${f.status}`));}root.append(el('ops-description',spray.disclaimer));}if(data.checklist.length){root.append(el('ops-section-title',`CHECKLIST · ${data.checklist.filter(x=>x.completed_at).length}/${data.checklist.length}`));for(const c of data.checklist){const r=el('item ops-checklist');r.dataset.item=c.id;r.dataset.done=c.completed_at?'1':'';r.textContent=`${c.completed_at?'✓':'□'} ${c.label}`;root.append(r);}}const a=actionFor(t,farmOps.activeFarm?.role);if(a){const r=el('item ops-action',`${a[1]} task`);r.dataset.action=a[0];root.append(r);}if(t.status==='in_progress'&&t.assignments?.some((x)=>x.userId===identity.profile?.id)){const r=el('item ops-action','Report problem');r.dataset.action='block';root.append(r);}root.append(el('ops-section-title','HISTORY'));data.events.slice(-4).reverse().forEach(e=>root.append(el('ops-history',`${new Date(e.created_at).toLocaleString()} · ${e.to_status||e.event_type}`)));return root;},
   async onEnter(node,ctx){if(detailActionBusy)return;if(node?.dataset.item){detailActionBusy=true;try{await api.toggleChecklist(ctx.params.id,node.dataset.item,node.dataset.done!=='1');ctx.router.replace('FarmTaskDetail',{id:ctx.params.id});}catch(e){flash(e.message);}finally{detailActionBusy=false;}return;}const action=node?.dataset.action;if(action){detailActionBusy=true;try{await api.transition(ctx.params.id,action,action==='complete'?{resultCode:'done',result:{source:'keypad'},note:'Completed from Today’s Farm'}:action==='block'?{reason:'Problem reported by worker'}:{});ctx.router.replace('FarmTaskDetail',{id:ctx.params.id});}catch(e){flash(e.message);}finally{detailActionBusy=false;}}},
 });
 

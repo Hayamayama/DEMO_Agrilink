@@ -1,4 +1,6 @@
 import { AppError, validation } from '../middleware/errors.js';
+import { assessSprayConditions } from './sprayAssessment.js';
+import { marketSnapshot } from './priceService.js';
 
 const ROLES = ['owner', 'manager', 'worker', 'viewer'];
 const MANAGE = new Set(['owner', 'manager']);
@@ -23,7 +25,7 @@ const text = (v, field, max = 120) => {
 };
 const json = (v) => v == null ? null : v;
 
-export function createFarmOpsService(pool) {
+export function createFarmOpsService(pool, { farmPriceService = null, weatherGetter = null } = {}) {
   async function membership(userId, farmId, roles = ROLES) {
     const r = await pool.query(`SELECT f.*, m.role FROM app.farms f JOIN app.farm_members m ON m.farm_id=f.id
       WHERE f.id=$1 AND m.user_id=$2 AND m.status='active' AND f.status='active'`, [farmId, userId]);
@@ -93,12 +95,59 @@ export function createFarmOpsService(pool) {
       else section.due.push(t);
     }
     const todays = rows.filter((t) => t.localDate === day);
-    return { farm: { id: farm.id, name: farm.name, timezone: farm.timezone, role: farm.role }, date: day, alerts: [], sections: section,
+    const [weather, prices, communityActivity] = await Promise.all([
+      weatherForFarm(farm),
+      farmPriceService?.getFarmPrices({ id: farm.id, stateName: 'Uttar Pradesh' }, 'rice').catch(() => null) || null,
+      communityFor(user, day),
+    ]);
+    const sprayAssessment = todays.some((t) => ['spraying','fertilizer'].includes(t.type)) && weather ? assessSprayConditions(weather) : null;
+    return { farm: { id: farm.id, name: farm.name, timezone: farm.timezone, role: farm.role }, date: day,
+      weather, sprayAssessment, marketSnapshot: marketSnapshot(prices), communityActivity, alerts: [],
+      sections: { ...section, dueToday: section.due, completedToday: section.completed },
       summary: { total: todays.filter((t) => !['cancelled','skipped'].includes(t.status)).length,
         completed: todays.filter((t) => ['completed','verified'].includes(t.status)).length,
         inProgress: todays.filter((t) => t.status === 'in_progress').length,
         blocked: todays.filter((t) => t.status === 'blocked').length,
         pending: todays.filter((t) => !['completed','verified','cancelled','skipped','in_progress','blocked'].includes(t.status)).length } };
+  }
+
+  async function weatherForFarm(farm) {
+    if (weatherGetter && farm.latitude != null && farm.longitude != null) {
+      try {
+        const weather = await weatherGetter(Number(farm.latitude), Number(farm.longitude));
+        await pool.query(`INSERT INTO app.farm_weather_snapshots(farm_id,provider,payload,fetched_at,expires_at)
+          SELECT $1,'open-meteo',$2,now(),now()+interval '30 minutes'
+          WHERE NOT EXISTS (SELECT 1 FROM app.farm_weather_snapshots WHERE farm_id=$1 AND provider='open-meteo' AND fetched_at>now()-interval '25 minutes')`,
+        [farm.id, weather]);
+        return weather;
+      } catch { /* use persisted snapshot */ }
+    }
+    return (await pool.query(`SELECT payload FROM app.farm_weather_snapshots WHERE farm_id=$1
+      ORDER BY fetched_at DESC LIMIT 1`, [farm.id])).rows[0]?.payload || null;
+  }
+
+  async function communityFor(user, day) {
+    const row = (await pool.query(`SELECT
+      (SELECT count(*)::int FROM app.forum_replies r JOIN app.forum_posts p ON p.id=r.post_id
+       WHERE p.author_id=$1 AND r.author_id<>$1 AND r.created_at>COALESCE((SELECT notifications_seen_at FROM app.forum_user_state WHERE user_id=$1),'-infinity')) unread_replies,
+      (SELECT count(*)::int FROM app.forum_posts WHERE created_at >= $2::date AND created_at < $2::date + interval '1 day') new_posts_today`, [user.id, day])).rows[0];
+    return { unreadReplies: row.unread_replies, newPostsToday: row.new_posts_today };
+  }
+
+  async function prices(user, farmId, crop = 'rice') {
+    const farm = await membership(user.id, farmId);
+    if (!farmPriceService) return { item: null };
+    return { item: await farmPriceService.getFarmPrices({ id: farm.id, stateName: 'Uttar Pradesh' }, crop) };
+  }
+
+  async function sprayAssessment(user, farmId, requestedDate) {
+    const farm = await membership(user.id, farmId);
+    const day = requestedDate ? dateOnly(requestedDate) : new Date().toISOString().slice(0, 10);
+    const exists = (await pool.query(`SELECT 1 FROM app.farm_tasks WHERE farm_id=$1 AND local_date=$2::date
+      AND type IN ('spraying','fertilizer') AND status NOT IN ('cancelled','skipped') LIMIT 1`, [farmId, day])).rowCount;
+    if (!exists) return null;
+    const weather = await weatherForFarm(farm);
+    return weather ? { sprayAssessment: assessSprayConditions(weather), weather } : null;
   }
 
   async function calendar(user, farmId, q) {
@@ -131,13 +180,15 @@ export function createFarmOpsService(pool) {
   async function getTask(user, id) {
     const r = await pool.query(taskSelect + ' WHERE t.id=$1' + taskGroup, [id]);
     if (!r.rows[0]) fail('NOT_FOUND', 'Task not found.');
-    await membership(user.id, r.rows[0].farm_id);
+    const farm = await membership(user.id, r.rows[0].farm_id);
     const [checklist, events, result] = await Promise.all([
       pool.query('SELECT * FROM app.farm_task_checklist_items WHERE task_id=$1 ORDER BY sort_order', [id]),
       pool.query(`SELECT e.*, p.display_name actor_name FROM app.farm_task_events e LEFT JOIN app.user_profiles p ON p.user_id=e.actor_user_id WHERE task_id=$1 ORDER BY created_at`, [id]),
       pool.query('SELECT * FROM app.farm_task_results WHERE task_id=$1', [id]),
     ]);
-    return { item: shapeTask(r.rows[0]), checklist: checklist.rows, events: events.rows, result: result.rows[0] || null };
+    const weather = ['spraying','fertilizer'].includes(r.rows[0].type) ? await weatherForFarm(farm) : null;
+    return { item: shapeTask(r.rows[0]), checklist: checklist.rows, events: events.rows, result: result.rows[0] || null,
+      sprayAssessment: weather ? assessSprayConditions(weather) : null };
   }
 
   async function createTask(user, farmId, b) {
@@ -193,8 +244,11 @@ export function createFarmOpsService(pool) {
       if (to === 'completed') {
         const incomplete = await client.query(`SELECT 1 FROM app.farm_task_checklist_items WHERE task_id=$1 AND is_required AND completed_at IS NULL LIMIT 1`, [id]);
         if (incomplete.rows[0]) fail('CHECKLIST_INCOMPLETE', 'Complete all required checklist items first.');
+        let weatherSnapshot = body.weatherSnapshot || null;
+        if (['spraying','fertilizer'].includes(task.type)) weatherSnapshot = (await client.query(
+          'SELECT payload FROM app.farm_weather_snapshots WHERE farm_id=$1 ORDER BY fetched_at DESC LIMIT 1', [task.farm_id])).rows[0]?.payload || weatherSnapshot;
         await client.query(`INSERT INTO app.farm_task_results(task_id,completed_by,result_code,result,note,actual_start_at,actual_finish_at,labor_minutes,weather_snapshot,problem_flag)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(task_id) DO NOTHING`, [id, user.id, body.resultCode || 'done', body.result || {}, body.note || null, body.actualStartAt || null, body.actualFinishAt || new Date(), body.laborMinutes || null, body.weatherSnapshot || null, Boolean(body.problemFlag)]);
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(task_id) DO NOTHING`, [id, user.id, body.resultCode || 'done', body.result || {}, body.note || null, body.actualStartAt || null, body.actualFinishAt || new Date(), body.laborMinutes || null, weatherSnapshot, Boolean(body.problemFlag)]);
         await client.query(`INSERT INTO app.farm_records(farm_id,field_id,crop_cycle_id,task_id,actor_user_id,record_type,occurred_at,local_date,data)
           VALUES ($1,$2,$3,$4,$5,$6,now(),$7,$8)`, [task.farm_id, task.field_id, task.crop_cycle_id, id, user.id, task.type, task.local_date, { resultCode: body.resultCode || 'done', result: body.result || {}, note: body.note || null }]);
       }
@@ -243,5 +297,5 @@ export function createFarmOpsService(pool) {
     const r = await pool.query(`SELECT r.*,f.name field_name,p.display_name actor_name,t.title task_title FROM app.farm_records r LEFT JOIN app.farm_fields f ON f.id=r.field_id LEFT JOIN app.user_profiles p ON p.user_id=r.actor_user_id LEFT JOIN app.farm_tasks t ON t.id=r.task_id WHERE ${where.join(' AND ')} ORDER BY r.occurred_at DESC LIMIT 100`, params);
     return { items: r.rows };
   }
-  return { farms, createFarm, membership, overview, calendar, listTasks, getTask, createTask, transition, checklist, fields, members, records };
+  return { farms, createFarm, membership, overview, prices, sprayAssessment, calendar, listTasks, getTask, createTask, transition, checklist, fields, members, records };
 }

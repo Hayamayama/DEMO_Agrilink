@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPriceService, analyze, netProfit, distanceKm } from './priceService.js';
+import { createPriceService, createFarmPriceService, marketSnapshot, analyze, netProfit, distanceKm } from './priceService.js';
 import { memoryRepo } from './priceRepo.js';
 
 const svc = createPriceService(memoryRepo(() => Date.parse('2026-09-19T00:00:00Z')));
@@ -20,20 +20,18 @@ test('unknown crop or region -> null', async () => {
   assert.equal(await svc.getPrices({ crop: 'rice', region: 'XX-00' }), null);
 });
 
-test('analyze states where the price sits against its recent average, without a forecast', () => {
-  assert.equal(analyze([100, 101, 103, 106]).recommendation, 'above_average');
-  assert.equal(analyze([106, 103, 101, 100]).recommendation, 'below_average');
-  assert.equal(analyze([100, 100, 101, 100]).recommendation, 'steady');
-  for (const series of [[100, 130], [130, 100], [100, 100]]) {
-    const { reason } = analyze(series);
-    assert.ok(reason.length <= 80);
-    assert.doesNotMatch(reason, /wait|days/i);
-  }
+test('analyze reports facts without a sell/wait recommendation', () => {
+  assert.deepEqual(analyze([100, 101, 103, 106]).trend, 'up');
+  assert.deepEqual(analyze([106, 103, 101, 100]).trend, 'down');
+  assert.deepEqual(analyze([100, 100, 101, 100]).trend, 'flat');
+  assert.equal('recommendation' in analyze([100,106]),false);
+  assert.ok(analyze([100, 130]).reason.length <= 80);
 });
 
-test('demo data trends up, so the home price is above its recent average', async () => {
+test('demo data reports an upward trend without advice', async () => {
   const d = await svc.getPrices({ crop: 'rice', region: 'IN-UP-01', home: 'rampur' });
-  assert.equal(d.analysis.recommendation, 'above_average');
+  assert.equal(d.analysis.trend, 'up');
+  assert.equal('recommendation' in d.analysis,false);
 });
 
 test('netProfit subtracts transport and scales by qty', () => {
@@ -114,7 +112,37 @@ test('price change and the analysis ignore prices older than the recent window',
   assert.equal(rampur.change_pct, 0.9); // vs 2025-10-29, not the June price
   assert.equal(d.markets.find((m) => m.code === 'ceda-3452').change_pct, null); // no recent previous price
   assert.equal(d.markets.find((m) => m.code === 'ceda-3452').days_from_home, 1);
-  assert.equal(d.analysis.recommendation, 'steady'); // June's 3000 is outside the two-week average
+  assert.equal(d.analysis.trend, 'up'); // June's 3000 is outside the two-week window
+  assert.equal('recommendation' in d.analysis, false);
+});
+
+test('farm prices normalize live rows, persist them, and return factual comparison', async () => {
+  let saved;
+  const cache = { fresh: async()=>null, latest:async()=>null, save:async(x)=>{saved=x;} };
+  const provider = {
+    getPrices: async()=>[
+      {market:'Lucknow APMC',district:'Lucknow',variety:'Common',minPrice:2100,maxPrice:2250,modalPrice:2180,arrivalDate:'2026-09-19'},
+      {market:'Kanpur APMC',district:'Kanpur',variety:'Common',minPrice:2200,maxPrice:2350,modalPrice:2280,arrivalDate:'2026-09-19'},
+    ],
+    getHistory: async()=>[2100,2180].map((modalPrice)=>({modalPrice,variety:'Common',arrivalDate:'2026-09-18'})),
+  };
+  const service=createFarmPriceService({provider,cache,now:()=>new Date('2026-09-19T03:34:12Z')});
+  const out=await service.getFarmPrices({id:'farm-1',stateName:'Uttar Pradesh'},'rice');
+  assert.equal(out.source,'live');
+  assert.equal(out.localMarket.name,'Lucknow APMC');
+  assert.equal(saved.payload.provider,'agmarknet');
+  const summary=marketSnapshot(out);
+  assert.equal(summary.bestNearbyMarket,'Kanpur APMC');
+  assert.equal(summary.netGainPerUnit,-35);
+  assert.equal(summary.trend7d,'+3.8%');
+  assert.equal('recommendation' in summary,false);
+});
+
+test('farm prices label persisted fallback as stale cache', async () => {
+  const cached={farmId:'farm-1',crop:'rice',provider:'agmarknet',source:'live',localMarket:{modalPrice:2000},nearbyMarkets:[],sevenDayTrend:[1900,2000]};
+  const service=createFarmPriceService({provider:{getPrices:async()=>{throw new Error('down');}},cache:{fresh:async()=>null,latest:async()=>cached}});
+  const out=await service.getFarmPrices({id:'farm-1'},'rice');
+  assert.equal(out.source,'cache'); assert.equal(out.stale,true);
 });
 
 test('with the member\'s location both trips start from the member', () => {

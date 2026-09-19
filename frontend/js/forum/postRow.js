@@ -16,6 +16,8 @@ export function postRow(p, { showRegion = false } = {}) {
   main.appendChild(title);
 
   const bits = [p.community.name];
+  if (p.author?.isVerifiedExpert) bits.push(`✓ ${p.author.expertTitle || 'Verified expert'}`);
+  else if (String(p.title).startsWith('[GOV]')) bits.push('📌 Official');
   const tag = p.tags.find((t) => t !== p.community.slug);
   if (tag) bits.push(tagLabel(tag));
   if (showRegion) bits.push(p.locationLabel);

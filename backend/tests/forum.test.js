@@ -17,10 +17,10 @@ test('guest can list communities, read the feed and open a post', async (t) => {
   const g = f.client();
   const comm = await g.get('/api/forum/communities');
   assert.deepEqual(comm.body.items.map((c) => c.slug), ['crop-talk', 'machinery', 'market-talk', 'livestock', 'farm-life']);
-  assert.equal(comm.body.items[0].postCount, 3);
+  assert.equal(comm.body.items[0].postCount, 8);
 
   const feed = await g.get('/api/forum/posts?limit=20');
-  assert.equal(feed.body.items.length, 12);
+  assert.equal(feed.body.items.length, 20);
   assert.equal(feed.body.items[0].body, undefined, 'feed never carries the full body');
 
   const detail = await g.get(`/api/forum/posts/${postId('crop_01')}`);
@@ -66,7 +66,7 @@ test('sort: new puts pinned first then newest; top uses score; local prefers the
 
   const nw = await ids('sort=new');
   assert.equal(nw[0], postId('rules_01'), 'pinned first');
-  assert.equal(nw[1], postId('market_01'), 'then created_at DESC');
+  assert.equal(nw[1], postId('up_market_03'), 'then created_at DESC');
 
   const top = await ids('sort=top');
   assert.equal(top[0], postId('rules_01'));
@@ -105,8 +105,8 @@ test('cursor pagination walks the feed without repeats', async (t) => {
     seen.push(...r.body.items.map((p) => p.id));
     cursor = r.body.nextCursor;
   } while (cursor);
-  assert.equal(seen.length, 12);
-  assert.equal(new Set(seen).size, 12);
+  assert.equal(seen.length, 20);
+  assert.equal(new Set(seen).size, 20);
   assert.equal((await g.get('/api/forum/posts?cursor=%%%')).status, 400);
 });
 
@@ -342,9 +342,12 @@ test('feed reads are rate limited per IP', async (t) => {
   assert.equal((await g.get('/api/forum/communities')).status, 429);
 });
 
-test('no AI/LLM dependency is used by the forum', async () => {
-  const { readFileSync } = await import('node:fs');
-  for (const d of ['routes/forum.js', 'services/forumService.js', 'services/authService.js', 'db/forumSeed.js']) {
-    assert.ok(!/gemini|openai|anthropic|llm/i.test(readFileSync(new URL(`../${d}`, import.meta.url), 'utf8')), d);
-  }
+test('Hindi translation is returned from the persistent cache with metadata', async (t) => {
+  const f = await startForum();
+  t.after(() => f.close());
+  const detail = await f.client().get(`/api/forum/posts/${postId('crop_01')}?lang=hi`);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.body.post.translation.targetLang, 'hi');
+  assert.equal(detail.body.post.translation.isTranslated, true);
+  assert.match(detail.body.post.translation.title, /बारिश/);
 });

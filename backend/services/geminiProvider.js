@@ -197,3 +197,14 @@ export async function transcribeAudio({ audio, language = 'en', signal, fetchImp
   });
   return extractText(data).replace(/\s+/g, ' ').trim().slice(0, 300);
 }
+
+export async function translateText({ text, sourceLang, targetLang, signal, fetchImpl, timeoutMs }) {
+  const cfg = config();
+  const body = {
+    systemInstruction: { parts: [{ text: `Translate agricultural forum text from ${sourceLang} to ${targetLang}. Keep crop names, chemical names, user names and numbers unchanged. Use simple rural language. Do not add information. Return only the translation.` }] },
+    contents: [{ role: 'user', parts: [{ text }] }],
+    generationConfig: { maxOutputTokens: 500, temperature: 0 },
+  };
+  const data = await call(`${cfg.model}:generateContent`, body, { signal, fetchImpl, timeoutMs: timeoutMs ?? cfg.timeoutMs });
+  return extractText(data).trim();
+}

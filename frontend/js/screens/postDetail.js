@@ -1,6 +1,7 @@
 import { el, isCompact } from '../dom.js';
 import { forumApi } from '../forum/forumApi.js';
 import { forum, requireAuth, resumeIntent, flash, currentFlash, expireSession } from '../forum/forumState.js';
+import { identity } from '../state.js';
 import { TYPE_LABEL, REASON_LABEL, relTime, replies as replyCount, tagLabel, errorText, chunkText } from '../forum/forumUtils.js';
 import { loadingView, emptyView, errorView, flashLine, setSoftkeys } from '../forum/ui.js';
 
@@ -15,7 +16,7 @@ function fetchPost(ctx) {
   if (v.fetching) return;
   v.fetching = true;
   const root = ctx.root;
-  forumApi.post(v.id).then((data) => { v.data = data; v.status = 'ready'; v.error = null; })
+  forumApi.post(v.id, identity.profile?.language).then((data) => { v.data = data; v.status = 'ready'; v.error = null; })
     .catch((error) => { v.error = error; if (!v.data) v.status = 'error'; })
     .finally(() => {
       v.fetching = false; v.stale = false;
@@ -60,8 +61,10 @@ function build(ctx) {
     if (on) meta.appendChild(el(text === '✓ SOLVED' ? 'forum-state solved' : 'forum-state', text, 'span'));
   }
   head.appendChild(meta);
-  head.appendChild(el('forum-title forum-title--full', p.title));
-  for (const text of chunkText(p.body, compact ? 90 : 260)) piece().appendChild(el('forum-body', text));
+  const shownPost=!view.showOriginal&&p.translation?p.translation:p;
+  head.appendChild(el('forum-title forum-title--full', shownPost.title));
+  if(p.translation&&!view.showOriginal)head.appendChild(el('forum-meta',`🌐 Translated from ${p.language}`));
+  for (const text of chunkText(shownPost.body, compact ? 90 : 260)) piece().appendChild(el('forum-body', text));
 
   const foot = piece();
   if (p.tags.length) {
@@ -69,7 +72,7 @@ function build(ctx) {
     p.tags.forEach((t) => tags.appendChild(el('forum-tag', `#${tagLabel(t)}`, 'span')));
     foot.appendChild(tags);
   }
-  foot.appendChild(el('forum-meta', `${p.author.displayName} · ${p.locationLabel} · ${relTime(p.createdAt)}`));
+  foot.appendChild(el('forum-meta', `${p.author.isVerifiedExpert?'✓ ':''}${p.author.displayName}${p.author.expertTitle?' · '+p.author.expertTitle:''} · ${p.locationLabel} · ${relTime(p.createdAt)}`));
   if (p.type === 'local_report') foot.appendChild(el('forum-meta forum-usernote', 'USER REPORT · not official'));
   if (!compact && (p.community.slug === 'livestock' || p.tags.some((t) => ['pest', 'disease', 'fertilizer'].includes(t)))) {
     foot.appendChild(el('forum-meta forum-usernote', 'Community advice is not verified. Ask a local expert before using chemicals or treating animals.'));
@@ -90,10 +93,13 @@ function build(ctx) {
     row.dataset.replyId = r.id;
     if (r.isAccepted) row.appendChild(el('forum-solution', '✓ SOLUTION'));
     const meta = el('forum-meta');
-    meta.appendChild(document.createTextNode(`${r.author.displayName} · ${relTime(r.createdAt)}${r.isEdited ? ' · edited' : ''} `));
+    const sourceLabel=r.source==='ai'?'🤖 AI · ':r.source==='official'?'📌 Official · ':r.author.isVerifiedExpert?'✓ ':'';
+    meta.appendChild(document.createTextNode(`${sourceLabel}${r.author.displayName}${r.author.expertTitle?' · '+r.author.expertTitle:''} · ${relTime(r.createdAt)}${r.isEdited ? ' · edited' : ''} `));
     meta.appendChild(voteChip(r.score, r.viewerVote));
     row.appendChild(meta);
-    row.appendChild(el(view.expanded.has(r.id) ? 'forum-body expanded' : 'forum-body', r.body));
+    const shownReply=!view.showOriginal&&r.translation?r.translation.body:r.body;
+    row.appendChild(el(view.expanded.has(r.id) ? 'forum-body expanded' : 'forum-body', shownReply));
+    if(r.source==='ai')row.appendChild(el('forum-meta forum-usernote','AI suggestion · Consult a local expert.'));
     wrap.appendChild(row);
   }
   return wrap;
@@ -226,7 +232,7 @@ export default {
   render(ctx) {
     ctx.root.classList.add('forum-scroll');
     const id = ctx.params.postId;
-    if (!view || view.id !== id) view = { id, status: 'loading', data: null, error: null, focusIndex: 0, expanded: new Set(), stale: false, fetching: false };
+    if (!view || view.id !== id) view = { id, status: 'loading', data: null, error: null, focusIndex: 0, expanded: new Set(), showOriginal:false, stale: false, fetching: false };
     if ((view.status === 'loading' && !view.fetching) || view.stale) fetchPost(ctx);
     if (view.data) return build(ctx);
     const wrap = el('forum-screen');
@@ -254,6 +260,7 @@ export default {
       case 'NUM_3': toggleSave(ctx); return true;
       case 'HASH': openActions(ctx); return true;
       case 'STAR': {
+        if(view.data.post.translation||view.data.replies.some((r)=>r.translation)){view.showOriginal=!view.showOriginal;ctx.rerender();return true;}
         const onPost = !ctx.focus.current?.dataset.replyId;
         const firstReply = ctx.focus.items.findIndex((n) => n.dataset.replyId);
         ctx.focus.set(onPost ? (firstReply >= 0 ? firstReply : 0) : 0);

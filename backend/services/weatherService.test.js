@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { getWeather, normalize, advise, buildUrl, _clearCache } from './weatherService.js';
 
 const raw = {
-  current: { temperature_2m: 27.6, precipitation: 0, weather_code: 1 },
+  current: { time:'2026-09-19T09:00',temperature_2m: 27.6,relative_humidity_2m:72, precipitation: 0, weather_code: 1,wind_speed_10m:8.2,wind_gusts_10m:12.5 },
+  hourly:{time:['2026-09-19T09:00','2026-09-19T10:00','2026-09-19T11:00','2026-09-19T12:00'],precipitation_probability:[5,10,15,20]},
   daily: {
     time: ['2026-09-19', '2026-09-20', '2026-09-21'],
     weather_code: [1, 61, 95],
@@ -17,6 +18,7 @@ const raw = {
 
 test('url asks for rain probability, not just current precipitation', () => {
   assert.match(buildUrl(24.14, 120.67), /precipitation_probability_max/);
+  assert.match(buildUrl(24.14, 120.67), /relative_humidity_2m/);
 });
 
 test('normalize maps 3 days and rounds temps', () => {
@@ -24,13 +26,15 @@ test('normalize maps 3 days and rounds temps', () => {
   assert.equal(w.current.temp, 28);
   assert.equal(w.daily.length, 3);
   assert.equal(w.daily[1].rain_prob, 70);
+  assert.equal(w.current.relativeHumidity,72);
+  assert.equal(w.current.rainProbabilityNext4h,20);
 });
 
-test('advice: dry day -> spray, rainy -> wait', () => {
-  assert.equal(advise(normalize(raw)).action, 'spray');
+test('advice uses condition labels instead of telling the farmer to spray', () => {
+  assert.equal(advise(normalize(raw)).action, 'optimal');
   const wet = normalize(raw);
   wet.daily[0].rain_prob = 80;
-  assert.equal(advise(wet).action, 'wait');
+  assert.equal(advise(wet).action, 'unsuitable');
 });
 
 test('caches, and serves stale data when upstream fails', async () => {

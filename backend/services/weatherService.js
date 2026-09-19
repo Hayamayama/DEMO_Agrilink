@@ -5,7 +5,8 @@ const TIMEOUT_MS = 5000;
 const cache = new Map(); // key -> { at, data }
 
 const FIELDS = {
-  current: 'temperature_2m,precipitation,weather_code',
+  current: 'temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m',
+  hourly: 'precipitation_probability,temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m',
   daily: [
     'weather_code',
     'temperature_2m_max',
@@ -21,6 +22,7 @@ export function buildUrl(lat, lng) {
     latitude: String(lat),
     longitude: String(lng),
     current: FIELDS.current,
+    hourly: FIELDS.hourly,
     daily: FIELDS.daily,
     forecast_days: '3',
     timezone: 'auto',
@@ -30,10 +32,20 @@ export function buildUrl(lat, lng) {
 
 export function normalize(raw) {
   const d = raw.daily;
+  const hour = raw.hourly || {};
+  const currentHour = String(raw.current.time || '').slice(0, 13);
+  const start = Math.max(0, (hour.time || []).findIndex((x) => String(x).startsWith(currentHour)));
+  const next4Rain = (hour.precipitation_probability || []).slice(start, start + 4);
   return {
     current: {
       temp: Math.round(raw.current.temperature_2m),
+      temperatureC: raw.current.temperature_2m,
+      relativeHumidity: raw.current.relative_humidity_2m,
       precip_mm: raw.current.precipitation,
+      precipitationMm: raw.current.precipitation,
+      windSpeedKph: raw.current.wind_speed_10m,
+      windGustKph: raw.current.wind_gusts_10m,
+      rainProbabilityNext4h: next4Rain.length ? Math.max(...next4Rain) : raw.daily.precipitation_probability_max[0],
       code: raw.current.weather_code,
     },
     daily: d.time.map((date, i) => ({
@@ -54,15 +66,15 @@ export function advise(w) {
   const today = w.daily[0];
   const rain3 = w.daily.reduce((s, d) => s + (d.rain_mm || 0), 0);
   if (today.rain_prob >= 60 || today.rain_mm >= 5) {
-    return { action: 'wait', reason: 'Rain likely. Delay spraying.' };
+    return { action: 'unsuitable', reason: 'Conditions are unsuitable for spraying: rain is likely.' };
   }
   if (today.tmax >= 35 && rain3 < 2) {
-    return { action: 'irrigate', reason: 'Hot and dry. Irrigate at dawn.' };
+    return { action: 'caution', reason: 'Hot and dry conditions. Review irrigation needs at dawn.' };
   }
   if (today.rain_prob < 20) {
-    return { action: 'spray', reason: 'Dry day. Good to spray.' };
+    return { action: 'optimal', reason: 'Conditions are optimal for spraying based on weather data.' };
   }
-  return { action: 'wait', reason: 'Mixed. Check this evening.' };
+  return { action: 'caution', reason: 'Mixed conditions for spraying. Check the latest weather before work.' };
 }
 
 export async function getWeather(lat, lng, { fetchImpl = fetch, now = Date.now } = {}) {

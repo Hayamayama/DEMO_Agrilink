@@ -8,7 +8,10 @@ import { ttsRouter } from './routes/tts.js';
 import { pricesRouter } from './routes/prices.js';
 import { createPool } from './db/pool.js';
 import { memoryRepo, pgRepo } from './services/priceRepo.js';
-import { createPriceService } from './services/priceService.js';
+import { createPriceService, createFarmPriceService } from './services/priceService.js';
+import { createMandiPriceProvider } from './providers/mandiPriceProvider.js';
+import { createPriceCacheRepository } from './repositories/priceCacheRepository.js';
+import { getWeather } from './services/weatherService.js';
 import { createAuthService } from './services/authService.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
@@ -91,7 +94,8 @@ if (pool) {
     try {
       await pool.query('SELECT 1 FROM app.farms LIMIT 0');
       if (process.env.SEED_DEMO_DATA === 'true') await seedFarmOps(pool);
-      app.use('/api/farms', createFarmOpsRouter({ pool, auth }).router);
+      const farmPriceService = createFarmPriceService({ provider: createMandiPriceProvider(), cache: createPriceCacheRepository(pool) });
+      app.use('/api/farms', createFarmOpsRouter({ pool, auth, farmPriceService, weatherGetter: getWeather }).router);
       console.log("farm ops: Today's Farm enabled");
     } catch (err) {
       console.warn(`farm ops: disabled (${err.message}) - apply migration 007 with npm run db:migrate`);

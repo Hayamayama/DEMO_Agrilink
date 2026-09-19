@@ -8,6 +8,11 @@ export const DEMO_USERS = [
   ['10000003', '9100000003', 'Minh Tran', 'Long Xuyen', 'VN-AG', 'member'],
   ['10000004', '9100000004', 'Rahim U.', 'Boalia', 'BD-RAJ', 'member'],
   ['10000005', '9100000005', 'Meena S.', 'Danapur', 'IN-BR', 'moderator'],
+  ['10000006', '9100000006', 'Dr. Priya Sharma', 'Lucknow', 'IN-UP-01', 'member', 'KVK Expert'],
+  ['10000007', '9100000007', 'Anil Verma', 'Kanpur', 'IN-UP-01', 'member', 'District Agronomist'],
+  ['10000008', '9100000008', 'Suresh Yadav', 'Varanasi', 'IN-UP-01', 'member', 'Experienced Rice Farmer'],
+  ['10000009', '9100000009', 'Agri Government', 'Uttar Pradesh', 'IN-UP-01', 'member'],
+  ['10000010', '9100000010', 'AgriLink AI', 'Online', 'IN-UP-01', 'member'],
 ];
 // Regions the demo needs that a fresh database may lack. Existing codes are left untouched.
 // [code, country, name, latitude, longitude] - centre points match migration 008.
@@ -82,5 +87,12 @@ export const POSTS = [
     title: 'Welcome to Farmer Circle — read before posting',
     body: 'Share honest experience, protect personal information, do not request payment, and report dangerous advice. Local reports are community reports unless marked official.',
     replies: [['10000001', 'Glad this exists. Thank you for setting it up.', 2]] },
+  { id:'seed_post_up_pest_01',author:'10000002',community:'crop-talk',type:'question',ago:80,score:14,tags:['rice','pest'],title:'Stem borer dead hearts found in young rice',body:'Dead hearts appeared in patches after moths were seen near the field. What should I count before deciding the next step?',replies:[['10000006','Check 20 hills in five places and record the percentage with dead hearts. Use local thresholds and product labels before treatment.',9,'expert']] },
+  { id:'seed_post_up_pest_02',author:'10000008',community:'crop-talk',type:'discussion',ago:420,score:11,tags:['rice','pest'],title:'Leaf roller damage stayed near the field edge',body:'Folded leaves are mostly near the bund after two cloudy days. Natural enemies are still visible.',replies:[['10000007','Monitor the center separately. Avoid unnecessary spraying when damage remains below the local action threshold.',8,'expert']] },
+  { id:'seed_post_up_bph_01',author:'10000002',community:'crop-talk',type:'question',ago:55,score:8,tags:['rice','pest'],title:'Brown planthopper seen at the base of rice plants',body:'Small brown insects gather near the water line in one patch. The canopy is dense and humid.',replies:[['10000010','Reduce standing water if appropriate and inspect several hills. This is an AI suggestion; consult a local expert for specific advice.',0,'ai']] },
+  { id:'seed_post_up_fert_01',author:'10000007',community:'crop-talk',type:'discussion',ago:700,score:16,tags:['rice','fertilizer'],title:'Split urea applications reduce loss after rain',body:'For transplanted rice, apply nitrogen in split doses based on crop stage and soil test. Avoid applying just before heavy rain.',replies:[['10000008','Splitting the dose helped keep leaf colour more even in my field.',4,'human']] },
+  { id:'seed_post_gov_01',author:'10000009',community:'farm-life',type:'discussion',ago:120,score:20,tags:['farm-life'],title:'[GOV] PM-KISAN beneficiary status reminder',body:'Check beneficiary status only at pmkisan.gov.in or through the nearest CSC. Never share an OTP with an unknown caller.',replies:[] },
+  { id:'seed_post_gov_02',author:'10000009',community:'farm-life',type:'discussion',ago:300,score:18,tags:['farm-life'],title:'[GOV] PMFBY crop insurance reporting reminder',body:'Report insured crop loss promptly through official PMFBY channels and keep the acknowledgement number.',replies:[] },
+  { id:'seed_post_gov_03',author:'10000009',community:'crop-talk',type:'discussion',ago:500,score:17,tags:['rice'],title:'[GOV] Weather advisory for eastern Uttar Pradesh',body:'Monitor drainage after heavy rain and follow district agriculture office advisories for field operations.',replies:[] },
+  { id:'seed_post_up_market_03',author:'10000008',community:'market-talk',type:'question',ago:35,score:6,tags:['wheat','price-report'],title:'Comparing Lucknow and Kanpur mandi wheat prices',body:'The higher quote may not cover transport and loading. What transport cost per quintal are farmers seeing?',replies:[['10000010','Compare the same grade and subtract transport and loading from each quote. This is an AI suggestion, not financial advice.',0,'ai'],['10000006','Also confirm moisture deductions because quoted and realized prices can differ.',5,'expert']] },
 ];
-

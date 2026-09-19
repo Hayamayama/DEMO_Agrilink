@@ -42,7 +42,7 @@ export default {
     if (!calc) { wrap.appendChild(h('msg', error || 'Loading…')); return wrap; }
 
     const rows = [
-      [`Sell at ${calc.to}`, `${money(calc.price_to, calc.currency)}/qt`],
+      [`${calc.to} market`, `${money(calc.price_to, calc.currency)}/qt`],
       [calc.from_distance_km > 25 ? `Nearest · ${calc.from}` : 'Your area', `${money(calc.price_from, calc.currency)}/qt`],
       // Unknown distance is shown as unknown, never as a free trip.
       !calc.transport_known ? ['Transport', 'not known']

@@ -36,7 +36,7 @@ test('Ask AI and TTS refuse anonymous callers', async () => {
 
 test('TTS serves a repeated screen from its cache without synthesizing again', async () => {
   let calls = 0;
-  const synthesize = async () => { calls += 1; return { audio: Buffer.from('fake-audio'), mimeType: 'audio/mpeg' }; };
+  const synthesize = async () => { calls += 1; return { text: 'translated text', mimeType: 'text/plain' }; };
   const app = express();
   app.use(express.json());
   app.use('/api/tts', ttsRouter({ auth, synthesize }));
@@ -50,7 +50,7 @@ test('TTS serves a repeated screen from its cache without synthesizing again', a
     for (const member of ['member-1', 'member-2']) {
       const res = await post(member, text);
       assert.equal(res.status, 200);
-      assert.equal(Buffer.from(await res.arrayBuffer()).toString(), 'fake-audio');
+      assert.deepEqual(await res.json(), { ok: true, text: 'translated text' });
     }
     assert.equal(calls, 1);
   } finally { server.closeAllConnections(); server.close(); }

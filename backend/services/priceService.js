@@ -11,17 +11,13 @@ export function distanceKm(a, b) {
 const RECENT_DAYS = 7; // a price change or comparison older than this is not "recent"
 const dayGap = (a, b) => Math.round(Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400000);
 
-// Rule-based and factual (no LLM, no forecast): where today's price sits against the recent
-// average. It does not tell a farmer to wait a number of days; the data cannot support that.
+// Factual trend only: prices are never turned into sell/wait advice.
 export function analyze(series) {
   const last = series[series.length - 1];
-  const avg = series.reduce((s, v) => s + v, 0) / series.length;
-  const pct = avg ? (last - avg) / avg : 0;
-  const confidence = Math.min(1, Math.abs(pct) / 0.05);
-  const shown = `${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(1)}%`;
-  if (pct >= 0.02) return { recommendation: 'above_average', trend: 'up', confidence, reason: `Price is above its recent average (${shown}).` };
-  if (pct <= -0.02) return { recommendation: 'below_average', trend: 'down', confidence, reason: `Price is below its recent average (${shown}). Compare markets.` };
-  return { recommendation: 'steady', trend: 'flat', confidence, reason: 'Price is close to its recent average.' };
+  const first = series[0];
+  const changePct = first ? Math.round(((last - first) / first) * 1000) / 10 : 0;
+  const trend = changePct > 0 ? 'up' : changePct < 0 ? 'down' : 'flat';
+  return { trend, changePct, reason: `7-day price change: ${changePct >= 0 ? '+' : ''}${changePct}%. This is market data, not advice.` };
 }
 
 const hasPoint = (m) => m.lat != null && m.lng != null;
@@ -177,4 +173,79 @@ export function createPriceService(repo) {
   }
 
   return { getPrices, getNetProfit, getCrops };
+}
+
+const MARKET_DISTANCE_FROM_LUCKNOW = new Map([
+  ['Lucknow', 0], ['Barabanki', 30], ['Unnao', 65], ['Kanpur', 90], ['Sitapur', 95],
+  ['Ayodhya', 135], ['Bareilly', 250], ['Varanasi', 315], ['Gorakhpur', 270], ['Agra', 335],
+]);
+
+const marketDistance = (row) => {
+  for (const [place, km] of MARKET_DISTANCE_FROM_LUCKNOW) {
+    if (`${row.market} ${row.district}`.toLowerCase().includes(place.toLowerCase())) return km;
+  }
+  return null;
+};
+const pct = (series) => series.length > 1 && series[0] ? Math.round(((series.at(-1) - series[0]) / series[0]) * 1000) / 10 : 0;
+
+// Farm-scoped Agmarknet adapter. The older createPriceService above remains the
+// compatibility layer for /api/prices and imported CEDA data.
+export function createFarmPriceService({ provider, cache, now = () => new Date() }) {
+  async function live(farm, crop) {
+    const state = farm.stateName || 'Uttar Pradesh';
+    const rows = await provider.getPrices(state, crop[0].toUpperCase() + crop.slice(1));
+    if (!rows.length) throw new Error('No mandi prices returned');
+    const dated = rows.sort((a, b) => String(b.arrivalDate).localeCompare(String(a.arrivalDate)));
+    const latestDate = dated[0].arrivalDate;
+    let latest = dated.filter((r) => r.arrivalDate === latestDate);
+    if (latest.some((r) => String(r.variety).toLowerCase() === 'common')) latest = latest.filter((r) => String(r.variety).toLowerCase() === 'common');
+    latest = [...new Map(latest.map((r) => [r.market, r])).values()];
+    latest.forEach((r) => { r.distanceKm = marketDistance(r); });
+    latest.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999) || a.market.localeCompare(b.market));
+    const local = latest.find((r) => /lucknow/i.test(`${r.market} ${r.district}`)) || latest[0];
+    const nearby = latest.filter((r) => r !== local && r.district !== local.district).slice(0, 5).map((r) => {
+      const distanceKm = r.distanceKm;
+      const transportCostPerQt = distanceKm == null ? null : Math.round(distanceKm * TRANSPORT_RS_PER_QT_KM);
+      return { name: r.market, district: r.district, minPrice: r.minPrice, maxPrice: r.maxPrice,
+        modalPrice: r.modalPrice, distanceKm, transportCostPerQt,
+        netGainPerUnit: transportCostPerQt == null ? null : Math.round((r.modalPrice - local.modalPrice) - transportCostPerQt) };
+    });
+    let trend = [local.modalPrice];
+    try {
+      const history = await provider.getHistory(state, crop[0].toUpperCase() + crop.slice(1), local.market);
+      const sameVariety = history.filter((r) => !local.variety || r.variety === local.variety);
+      const values = sameVariety.sort((a,b)=>String(a.arrivalDate).localeCompare(String(b.arrivalDate))).map((r) => Number(r.modalPrice)).filter(Number.isFinite).slice(-7);
+      if (values.length) trend = values;
+    } catch { /* current government price remains useful without history */ }
+    const fetchedAt = now();
+    const payload = { farmId: farm.id, provider: 'agmarknet', crop, currency: 'INR', unit: 'quintal',
+      date: latestDate, source: 'live', stale: false, fetchedAt: fetchedAt.toISOString(),
+      localMarket: { name: local.market, district: local.district, minPrice: local.minPrice, maxPrice: local.maxPrice,
+        modalPrice: local.modalPrice, isLocal: true }, nearbyMarkets: nearby, sevenDayTrend: trend };
+    await cache.save({ farmId: farm.id, crop, stateName: state, payload, fetchedAt,
+      expiresAt: new Date(fetchedAt.getTime() + 60 * 60 * 1000) });
+    return payload;
+  }
+
+  async function getFarmPrices(farm, crop = 'rice') {
+    const hit = await cache.fresh(farm.id, crop, now());
+    if (hit && hit.source !== 'demo') return { ...hit, source: 'cache', stale: false };
+    try { return await live(farm, crop); }
+    catch (error) {
+      const fallback = await cache.latest(farm.id, crop);
+      if (fallback) return { ...fallback, source: fallback.source === 'demo' ? 'demo' : 'cache', stale: true };
+      return null;
+    }
+  }
+  return { getFarmPrices };
+}
+
+export function marketSnapshot(data) {
+  if (!data?.localMarket) return null;
+  const candidates = data.nearbyMarkets.filter((m) => m.netGainPerUnit != null).sort((a, b) => b.netGainPerUnit - a.netGainPerUnit);
+  const best = candidates[0] || data.nearbyMarkets[0];
+  return { crop: data.crop, localPrice: data.localMarket.modalPrice,
+    bestNearbyPrice: best?.modalPrice ?? null, bestNearbyMarket: best?.name ?? null,
+    netGainPerUnit: best?.netGainPerUnit ?? null, trend7d: `${pct(data.sevenDayTrend) >= 0 ? '+' : ''}${pct(data.sevenDayTrend)}%`,
+    source: data.source, stale: data.stale, provider: data.provider, fetchedAt: data.fetchedAt };
 }

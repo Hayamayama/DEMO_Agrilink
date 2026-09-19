@@ -92,7 +92,7 @@ export default {
     });
     const variety = data.variety && !['Common', 'Other', 'FAQ'].includes(data.variety) ? ` · ${data.variety}` : '';
     wrap.appendChild(h('msg dim', `Data: ${dataDate(data.date)} · ${sourceLabel(data.source)}${variety}`));
-    wrap.appendChild(h('msg', `Tip: ${data.analysis.reason}`));
+    wrap.appendChild(h('msg', `Trend: ${data.analysis.reason}`));
     if (data.sample) wrap.appendChild(h('msg dim hide-small', 'Sample data'));
     return wrap;
   },
