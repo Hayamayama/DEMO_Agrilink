@@ -4,7 +4,9 @@ export const KEYMAP = {
   ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
   Enter: 'ENTER',
   SoftLeft: 'SOFT_L', SoftRight: 'SOFT_R',
-  Backspace: 'BACK', Escape: 'BACK',
+  Backspace: 'BACK',
+  // Official sample (cloudphone-demo) maps desktop Escape -> left soft key, F12 -> right soft key.
+  Escape: 'SOFT_L', F12: 'SOFT_R',
   '*': 'STAR', '#': 'HASH',
 };
 for (let i = 0; i <= 9; i++) KEYMAP[String(i)] = `NUM_${i}`;

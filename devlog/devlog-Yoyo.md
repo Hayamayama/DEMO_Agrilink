@@ -74,3 +74,10 @@
 - **給組員的注意事項**
   - 文件都在 `docs/`，devlog 都放 `devlog/`。
   - push 前先 `git pull --rebase origin main`，避免像這次被拒絕。
+
+## 202609191148 · 實機測試前：校正桌面軟鍵對應
+
+- **發現的問題**：`docs/HACKATHON_PREP.md` 指出官方範例把桌面模擬的 `Escape`→左軟鍵、`F12`→右軟鍵；我原本把 `Escape` 對到 BACK，與官方衝突。
+- **想解決什麼**：讓 Cloud Phone simulator / 桌面測試時軟鍵行為與官方一致。
+- **做了什麼改動**：`frontend/js/keypad.js`：`Escape`→`SOFT_L`、`F12`→`SOFT_R`（`Backspace` 仍為 BACK，`SoftLeft/SoftRight` 保留）。
+- **給組員的注意事項**：實機的真實 key 值仍未驗證，測試時開 `?debug=1` 記錄後回填 `KEYMAP`。
