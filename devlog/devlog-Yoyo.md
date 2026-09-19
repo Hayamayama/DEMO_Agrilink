@@ -110,3 +110,17 @@
   - **備份檔絕對不要放在 `sites-enabled/`**。
   - 後續更新：主機上 `bash ~/dogbark/deploy/setup.sh`（會 git pull 並重啟服務）；看 log：`journalctl -u agrilink -f`。
   - 下一步（需本人操作）：登入 cloudphone.tech Console 用主辦給的 `*.sslip.io` 網址註冊 widget（Name: AgriLink、80×80 PNG icon），實機用 `?debug=1` 記錄軟鍵 key 值。
+
+## 202609191214 · 依 simulator 實測結果更新鍵位對照
+
+- **發現的問題**（simulator 實測，用 `?debug=1`）
+  - 左軟鍵 = `Escape`（kc 27）；與官方範例一致，原設定正確。
+  - **右軟鍵完全沒有 keydown 事件**：由平台處理（等同 `history.back()`／根畫面關閉），與官方文件描述相符，所以 router 與 history 同步的設計是對的，不需要也不能在前端攔截。
+  - 數字鍵回報 `code=DigitN`（原本只用 `e.key` 比對，可能漏接）；`*` 回報 `NumpadMultiply`（kc 106），原本 `'*'` 對不到；`#` 回報與 `3` 相同的 `Digit3`（kc 51），僅能靠 `shiftKey` 區分（尚待確認）。
+  - 無獨立返回鍵。
+- **想解決什麼**：讓數字、`*`、`#` 在 simulator 上也能正確對到動作。
+- **做了什麼改動**：`frontend/js/keypad.js` 新增 `resolveAction()`（依序比對 `key` → `code` → `keyCode`）；加入 `Digit0-9`、`Numpad0-9`、`NumpadMultiply`、kc 106；`#` 判定 = `key==='#'` 或 `Shift+Digit3`。debug 覆蓋層改顯示 `key/code/kc/shift/對應動作`。以 Node 腳本驗證 7 個案例皆通過。
+- **給組員的注意事項**
+  - 別依賴前端收到右軟鍵；畫面上的 "Back" 只是標籤，實際由平台觸發返回。
+  - **`#` 與 `3` 在 simulator 上可能無法區分**（若 `shiftKey` 也是 false）：T9「送出」不要只靠 `#`，需要備援（例如 Enter 或 soft key）。實機結果仍待測。
+  - 尚未在實機驗證。
