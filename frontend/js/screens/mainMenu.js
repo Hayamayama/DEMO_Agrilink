@@ -1,5 +1,5 @@
 const ITEMS = [
-  { label: 'Market Prices', to: 'ComingSoon' },
+  { label: 'Market Prices', to: 'MarketPrices' },
   { label: 'Sell / Buy', to: 'ComingSoon' },
   { label: 'Farmer Circle', to: 'ComingSoon' },
   { label: 'Ask AI', to: 'ComingSoon' },

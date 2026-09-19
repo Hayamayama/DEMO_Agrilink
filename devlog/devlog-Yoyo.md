@@ -190,3 +190,24 @@
   - 地點清單目前是前端寫死的暫時方案；等 `/api/auth/session` 與 Settings 做好後，改讀使用者 profile 的 village + lat/lng，`LOCATIONS` 屆時可移除或當預設選項。
   - `#` 在天氣頁被用來切換地點，其他畫面若要用 `#`（例如 T9 送出）互不影響（只在該畫面 `onKey` 處理）。
   - 版面底線：內容高度要預留 header（📍）＋ 溫度 ＋ 3 列 ＋ 建議兩行，新增元素前先在 240×320 截圖確認。
+
+## 202609191319 · Market Prices（行情頁 + 淨利計算）
+
+- **發現的問題**
+  - 主機上已有組員建的 **PostgreSQL**（`agrilink` 庫、`app` schema、角色 `agrilink_migrator`=改結構 / `agrilink_app`=讀寫資料），與 proposal 的 SQLite 不同 → 後端改用 `pg`，**proposal §5/§8 的 SQLite 描述已過時**。
+  - 主機上有 `001_foundation.sql`、`002_marketplace.sql`，但**不在 git**，repo 也沒有 DB 連線說明；所有表目前是空的，且**沒有行情表**。
+  - 淨利實測算出負值：沿用 proposal 範例的運費 2.8 ₹/qt/km 太高（77km 就吃掉 ₹216）；且 sample 漲幅太小，「建議等兩天」不會出現。兩者都是估算/假資料常數問題，已調整（運費 1.5，標註為估算）。
+- **想解決什麼**：做出 Market Prices（多市場比價 + 趨勢建議 + 淨利計算），資料層接 Postgres，沒設 `DATABASE_URL` 時退回記憶體假資料，demo 不會白屏。
+- **做了什麼改動**
+  - 把 001、002 從主機（唯讀）複製進 `backend/db/migrations/`；新增 `003_market_prices.sql`（`app.markets`、`app.market_prices`，沿用 uuid / numeric+currency / CHECK 慣例，含 `is_sample`、`source` 欄位）。
+  - `backend/db/`：`pool.js`（無 `DATABASE_URL` 回傳 null）、`seedData.js`（**唯一**的假資料來源，記憶體與寫 DB 共用）、`seed.js`（冪等，以 app 角色寫入 regions/crops/markets/prices）。
+  - `services/priceRepo.js`（memory / pg 兩種 repo，同一種資料形狀）、`priceService.js`（趨勢建議、淨利、距離）、`routes/prices.js`：`GET /api/prices?crop=&region=`、`GET /api/prices/net-profit?crop=&region=&from=&to=&qty=`。
+  - 前端 `screens/marketPrices.js`（LEFT/RIGHT 換作物）、`screens/priceDetail.js`（LEFT/RIGHT 調數量、文字走勢圖）、`fmt.js`；router 新增 `screen.initialFocus`，從詳情返回時焦點停在原本那列；主選單 1 = Market Prices。
+  - 測試：後端 11 項全過；瀏覽器 240×320 / 128×160 鍵盤操作驗證。
+- **給組員的注意事項**
+  - **建議文字標「Tip」而非「AI」**：目前是規則式（今日價 vs 7 日均價，±2%），不是 LLM；Ask AI 頁若要引用行情請取這支 API 的數字。
+  - **畫面上的價格目前全是 sample 假資料**（回傳 `sample:true` 並顯示「Sample data」）；真實 Agmarknet 抓取還沒做（需要 `DATA_GOV_IN_KEY`，到 data.gov.in 免費註冊）。demo 時不要說成真實資料。
+  - **003 尚未套用到共用資料庫**，也尚未在真 Postgres 上驗證過 SQL 與 `pgRepo`（本機沒有 Postgres）。套用方式：用 `agrilink_migrator` 執行 `003_market_prices.sql`，再記錄版本到 `app.schema_migrations`（我沒有在檔內寫入，避免和 runner 重複）；接著用 app 角色執行 `DATABASE_URL=... node db/seed.js`。
+  - 目前只有 `IN-UP-01`（Rampur）有市場資料；VN/BD/TW 無資料。
+  - **`DATABASE_URL`（含密碼）只能放主機 `backend/.env`，絕不進 repo / devlog**；systemd 服務已用 `EnvironmentFile` 讀取。密碼曾出現在對話中，建議之後更換。
+  - 表名/欄位若與 Kris 的 migration 有衝突或命名想法請先提，003 尚未套用，改起來成本低。

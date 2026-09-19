@@ -22,6 +22,8 @@ export function createRouter({ screens, els, ctxExtra = {} }) {
     if (built) root.appendChild(built);
     focus = new Focus(root);
     ctx.focus = focus;
+    const fi = screen.initialFocus?.(ctx);
+    if (fi != null) focus.set(fi);
     const l = screen.softLeft, c = screen.softCenter, r = screen.softRight;
     els.sl.textContent = l ? l.label : 'Menu';
     els.sc.textContent = c ? c.label : (focus.items.length ? 'Select' : '');
