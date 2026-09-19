@@ -1,3 +1,4 @@
+import { t } from './i18n/index.js';
 // Native TTS client: fetches translated text from backend and plays it using browser API.
 // Shows a toast overlay while loading/playing.
 
@@ -33,7 +34,7 @@ export async function readAloud(text, language = 'en') {
   if (!text || !text.trim()) return;
 
   if (!('speechSynthesis' in window)) {
-    showToast('⚠ Native TTS not supported');
+    showToast(t('⚠ Native TTS not supported'));
     hideToast(2500);
     return;
   }
@@ -41,7 +42,7 @@ export async function readAloud(text, language = 'en') {
   const controller = new AbortController();
   currentAbort = controller;
 
-  showToast('🔊 Translating…');
+  showToast(t('🔊 Translating…'));
 
   try {
     const res = await fetch('/api/tts', {
@@ -54,7 +55,7 @@ export async function readAloud(text, language = 'en') {
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       const msg = body?.error?.message || 'Translation unavailable';
-      showToast(`⚠ ${msg}`);
+      showToast(`⚠ ${t(msg)}`);
       hideToast(2500);
       return;
     }
@@ -62,12 +63,12 @@ export async function readAloud(text, language = 'en') {
     const { text: translatedText } = await res.json();
     
     if (!translatedText) {
-      showToast('⚠ Translation failed');
+      showToast(t('⚠ Translation failed'));
       hideToast(2500);
       return;
     }
 
-    showToast('🔊 Reading…');
+    showToast(t('🔊 Reading…'));
 
     const utterance = new SpeechSynthesisUtterance(translatedText);
     utterance.lang = language;
@@ -81,14 +82,14 @@ export async function readAloud(text, language = 'en') {
     utterance.onend = () => {
       isSpeaking = false;
       currentUtterance = null;
-      showToast('🔊 Done');
+      showToast(t('🔊 Done'));
       hideToast();
     };
 
     utterance.onerror = (e) => {
       isSpeaking = false;
       currentUtterance = null;
-      showToast('⚠ Playback failed');
+      showToast(t('⚠ Playback failed'));
       console.error('SpeechSynthesisError:', e);
       hideToast(2500);
     };
@@ -98,7 +99,7 @@ export async function readAloud(text, language = 'en') {
     
   } catch (err) {
     if (err.name === 'AbortError') return; // intentional stop
-    showToast('⚠ TTS failed');
+    showToast(t('⚠ TTS failed'));
     hideToast(2500);
   }
 }
