@@ -1,16 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import { startForum } from './helpers.js';
 import { seedFarmOps, FARM_DEMO_ID } from '../db/farmOpsSeed.js';
 import { createFarmOpsService } from '../services/farmOpsService.js';
 import { occurrenceDates } from '../services/recurrenceService.js';
 
-const migration = fs.readFileSync(new URL('../db/migrations/007_farm_operations.sql', import.meta.url), 'utf8');
-
 async function setup() {
   const t = await startForum();
-  await t.db.exec(migration);
   await seedFarmOps(t.pool, { demoDate: '2026-09-19' });
   const users = (await t.pool.query(`SELECT s.demo_key,p.user_id id FROM app.forum_user_state s JOIN app.user_profiles p ON p.user_id=s.user_id WHERE s.demo_key IN ('10000001','10000002','10000003','10000004','10000005') ORDER BY s.demo_key`)).rows;
   const byKey = new Map(users.map((u) => [u.demo_key, u]));
@@ -26,6 +22,10 @@ test('Today groups overdue, active, blocked and completed work with a real summa
     assert.equal(out.sections.overdue[0].title, 'Inspect pump');
     assert.equal(out.sections.blocked[0].title, 'Spray vegetable plot');
     assert.equal(out.sections.inProgress[0].title, 'Irrigate north section');
+    assert.equal(out.sprayAssessment.overall, 'caution');
+    assert.match(out.sprayAssessment.disclaimer, /product label/);
+    assert.deepEqual(out.sections.dueToday, out.sections.due);
+    assert.equal(typeof out.communityActivity.newPostsToday, 'number');
   } finally { await t.close(); }
 });
 
@@ -43,8 +43,9 @@ test('demo seed is complete and idempotent', async () => {
       (SELECT count(*)::int FROM app.farm_records WHERE farm_id=$1) records,
       (SELECT count(*)::int FROM app.farm_task_templates WHERE farm_id=$1) templates,
       (SELECT count(*)::int FROM app.farm_notifications WHERE farm_id=$1) notifications,
+      (SELECT count(*)::int FROM app.price_snapshots WHERE farm_id=$1) prices,
       (SELECT count(*)::int FROM app.farm_weather_snapshots WHERE farm_id=$1) weather`, [FARM_DEMO_ID])).rows[0];
-    assert.deepEqual(counts, { members: 5, fields: 3, cycles: 3, tasks: 13, records: 6, templates: 3, notifications: 3, weather: 1 });
+    assert.deepEqual(counts, { members: 5, fields: 3, cycles: 3, tasks: 13, records: 6, templates: 3, notifications: 3, prices: 3, weather: 1 });
     const waiting = (await t.pool.query(`SELECT verification_required,status FROM app.farm_tasks WHERE title='Drainage repair review'`)).rows[0];
     assert.equal(waiting.verification_required, true);
     assert.equal(waiting.status, 'completed');

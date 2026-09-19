@@ -38,7 +38,7 @@ export async function seedDemo(pool, { auth, pin = process.env.DEMO_USER_PIN, no
 
   // Demo members. Found by demo_key; created via auth.signup the first time.
   const userIds = new Map();
-  for (const [key, phone, displayName, village, regionCode, role] of DEMO_USERS) {
+  for (const [key, phone, displayName, village, regionCode, role, expertTitle] of DEMO_USERS) {
     let id = (await pool.query('SELECT user_id FROM app.forum_user_state WHERE demo_key = $1', [key])).rows[0]?.user_id;
     if (!id) {
       let user;
@@ -53,6 +53,7 @@ export async function seedDemo(pool, { auth, pin = process.env.DEMO_USER_PIN, no
         ON CONFLICT (user_id) DO UPDATE SET demo_key = EXCLUDED.demo_key`, [id, key]);
     }
     if (role !== 'member') await pool.query('UPDATE app.users SET role = $2, updated_at = now() WHERE id = $1 AND role = \'member\'', [id, role]);
+    if (expertTitle) await pool.query('UPDATE app.users SET is_verified_expert=true,expert_title=$2,updated_at=now() WHERE id=$1', [id, expertTitle]);
     userIds.set(key, id);
   }
   const voters = Array.from({ length: VOTER_COUNT }, (_, n) => seedId(`voter:${n + 1}`));
@@ -81,11 +82,12 @@ export async function seedDemo(pool, { auth, pin = process.env.DEMO_USER_PIN, no
       // `score` upvotes from the fictional voters (never the author; self-voting is not allowed).
       const cast = (type, targetId, score, ago) => { for (let n = 0; n < score; n++) votes.push([voters[n], type, targetId, at(ago, now)]); };
       cast('post', id, p.score, Math.max(1, p.ago - 5));
-      for (const [k, [author, body, score]] of p.replies.entries()) {
-        await client.query(`INSERT INTO app.forum_replies (id, post_id, author_id, body, is_demo, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, true, $5, $5)
-          ON CONFLICT (id) DO UPDATE SET created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
-        [replyIds[k], id, userIds.get(author), body, at(replyAgo[k], now)]);
+      for (const [k, [author, body, score, explicitSource]] of p.replies.entries()) {
+        const source = explicitSource || (DEMO_USERS.find((u) => u[0] === author)?.[6] ? 'expert' : 'human');
+        await client.query(`INSERT INTO app.forum_replies (id, post_id, author_id, body, source, is_demo, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, true, $6, $6)
+          ON CONFLICT (id) DO UPDATE SET source=EXCLUDED.source,created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
+        [replyIds[k], id, userIds.get(author), body, source, at(replyAgo[k], now)]);
         cast('reply', replyIds[k], score, replyAgo[k]);
       }
     }
@@ -93,6 +95,16 @@ export async function seedDemo(pool, { auth, pin = process.env.DEMO_USER_PIN, no
       SELECT u, t, i, 1, c, c FROM unnest($1::uuid[], $2::text[], $3::uuid[], $4::timestamptz[]) AS x(u, t, i, c)
       ON CONFLICT (user_id, target_type, target_id) DO UPDATE SET created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     [votes.map((v) => v[0]), votes.map((v) => v[1]), votes.map((v) => v[2]), votes.map((v) => v[3])]);
+    const hindi = [
+      ['seed_post_crop_01','तीन दिन की बारिश के बाद भूरे धब्बे','पुराने धान के पत्तों पर छोटे भूरे धब्बे दिखाई दिए।'],
+      ['seed_post_up_pest_01','धान में तना छेदक के कारण डेड हार्ट','युवा धान में कुछ जगह डेड हार्ट दिखाई दिए।'],
+      ['seed_post_up_bph_01','धान के पौधों के नीचे भूरा फुदका','एक हिस्से में पानी की सतह के पास छोटे भूरे कीड़े हैं।'],
+      ['seed_post_gov_01','[GOV] PM-KISAN लाभार्थी स्थिति स्मरण','स्थिति केवल pmkisan.gov.in या निकटतम CSC पर जांचें।'],
+      ['seed_post_up_market_03','Lucknow और Kanpur मंडी गेहूं भाव की तुलना','ऊंचा भाव परिवहन और लोडिंग खर्च पूरा न भी कर सकता है।'],
+    ];
+    for (const [postKey,title,body] of hindi) await client.query(`INSERT INTO app.translations_cache(source_type,source_id,target_lang,translated_text)
+      VALUES('post',$1,'hi',$2) ON CONFLICT(source_type,source_id,target_lang) DO UPDATE SET translated_text=EXCLUDED.translated_text`,
+    [seedId(`post:${postKey}`),JSON.stringify({title,body})]);
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

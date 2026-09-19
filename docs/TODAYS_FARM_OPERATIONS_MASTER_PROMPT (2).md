@@ -1,5 +1,8 @@
 # ADDENDUM — Live Data, Spray Safety, Farmer Circle, Today Integration
 
+> **2026-09-19 更新：** 行情已統一改用 data.gov.in 的 Agmarknet 每日資料，由 `backend/db/syncMandi.js` 每 30 分鐘同步進 `app.market_prices`；Today's Farm 與 Market Prices 共用 `createPriceService`。`mandi-api.onrender.com` 與 `providers/mandiPriceProvider.js` 已移除，請勿再加回。
+
+
 > Applies on top of `TODAYS_FARM_OPERATIONS_MASTER_PROMPT`. Sections here override or extend the numbered sections of the base document. If a section number appears here, it supersedes the corresponding section in the base prompt. Unnumbered sections are new additions.
 
 ---

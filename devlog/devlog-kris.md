@@ -349,3 +349,53 @@
 - 前端需強制重新整理才會拿到新版。
 - Ask AI 與 TTS 現在必須登入；本機無資料庫的 demo 模式仍開放。
 - 行情資料仍停在 2025-10-30，且前端地區仍固定為 `IN-CEDA-S9-D136`（行情個人化與每日同步是下一階段）。
+
+---
+
+## 202609191832 GMT+8 — 行情改用 data.gov.in 每日即時價格（北方邦）
+
+### 發現／問題
+
+- CEDA 的 Agmarknet 資料只到 2025-10-30；data.gov.in 註冊要印度手機簡訊驗證碼，無法取得個人 key。
+- 實測 data.gov.in「Current Daily Price of Various Commodities」可用官方文件公開的 sample key 取得**當天**資料（2026-09-19 全印度 11,845 筆），不需註冊；限制是每次 10 筆、全球共用、常被限流（約 1–2 分鐘恢復）。
+
+### 做了什麼改動
+
+- `services/mandiClient.js`：分頁抓取、429 指數退避（20s 起、最多 5 分鐘一次、總等待上限）。
+- `db/syncMandi.js`：同步北方邦 rice/wheat/onion/tomato/potato；被限流太久就停，下次接續；同一州×作物每 3 小時重抓（市場陸續回報）。市場以 Open-Meteo 地名查詢定位，**只接受落在同一縣的結果**（UP 同名城鎮很多，寧可「運費未知」也不要錯的距離）；加上 UP 縣名拼法對照表。
+- VM：`agrilink-mandi-sync.timer` 每 30 分鐘執行（`deploy/setup.sh` 會安裝）。
+- migration 010：新增 `IN-UP` 與 Meerut／Agra／Lucknow／Varanasi 四個縣（Rampur 沿用 `IN-UP-01`）；縣找不到價格時用整個邦；只有 sample 資料時改用邦的真實資料。
+- 行情邏輯：只比較同一品種（多數市場回報的那個，避免 basmati 混入一般米）、列出離使用者最近的 8 個市場、14 天沒回報的市場排除、距離從使用者算起；淨收益 =（目標市場價 − 運過去的運費）−（最近市場價 − 運到最近市場的運費）。新增 `/api/prices/crops`；畫面依使用者作物排序，最近市場太遠時標「Nearest」。
+
+### 部署與驗證
+
+- VM 更新至 `08ab4af`；010 以 postgres 角色套用並寫 ledger；套用前備份 `~/agrilink-backup-prices-202609191023.sql`。
+- 第一次同步 30 秒完成：5 種作物、136 筆 2026-09-19 價格；88 個市場中 75 個有座標。
+- 線上 API 驗證 5 個縣皆回傳 `source=agmarknet`、`sample=false`。本機 240×320 實測 Varanasi 使用者：Prayagraj 稻米扣運費後淨 +₹223/qt。
+
+### 組員注意事項
+
+- 若取得個人 data.gov.in key，設定 `MANDI_API_KEY` 即可（每頁 500 筆、不共用限流）。
+- 歷史趨勢要靠每日累積；前幾天詳情頁會顯示「Trend appears after a few days of prices」。
+- **`services/ttsService.test.js` 目前失敗**：TTS 已改用 Google 翻譯（5603058），但該測試仍模擬 Gemini 並會真的連網；請 TTS 負責人更新。
+
+---
+
+## 202609191849 GMT+8 — Today's Farm 行情改讀同一份同步資料（與 Yoyo 協議）
+
+### 發現／問題
+
+- Today's Farm（f370b2e）另外接了 `mandi-api.onrender.com`（非官方、Render 免費方案會休眠），距離用寫死的「離 Lucknow 公里數」表，淨收益用舊公式；與 Market Prices 同一位使用者可能看到不同數字。
+
+### 做了什麼改動
+
+- `createFarmPriceService` 改包 `createPriceService`：依農場座標找最近市場、列出接下來 5 個市場，淨收益公式與 Market Prices 相同（兩段運費都從農場算）。回傳格式不變，儀表板與 `marketSnapshot` 不需修改；農場所在地區沒有同步資料時回傳已存的 snapshot（標 stale）。
+- 移除 `providers/mandiPriceProvider.js` 與其測試；示範農場地區改為與其座標一致的 `IN-UP-LKO`；兩份規劃文件加註「已改用 data.gov.in，勿再加回」。
+
+### 部署與驗證
+
+- VM 更新至 `45321bc`，服務 active。示範農場（Lucknow）：最近市場 Safdarganj ₹2,432；儀表板摘要「Unnao +₹409/qt net」，與 Market Prices 同地點列表逐一相符，source=live、2026-09-19。
+
+### 組員注意事項
+
+- 全 app 行情只有一個來源：`app.market_prices`（`syncMandi.js` 每 30 分鐘同步）。新功能需要價格請用 `createPriceService`，不要另接 API。

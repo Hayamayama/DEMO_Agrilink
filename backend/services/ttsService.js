@@ -18,6 +18,7 @@ const config = () => ({
 
 export const isConfigured = () => true;
 
+<<<<<<< HEAD
 // Helper to chunk text by word/punctuation so it stays under 200 chars for Google Translate TTS
 function chunkText(text, maxLen = 190) {
   const chunks = [];
@@ -86,17 +87,29 @@ async function synthesizeWithGemini(text, language, signal) {
 }
 
 export async function synthesize(text, language = 'en', { signal } = {}) {
+=======
+/**
+ * Translates text using google-translate-api-x and returns the text.
+ * The frontend will then use the browser's native window.speechSynthesis to play it.
+ */
+export async function synthesize(text, language = 'en', { signal, provider = translate } = {}) {
+>>>>>>> b49382c2ffcbd6aff43ec44a8d68d905faf0ed53
   const trimmed = String(text || '').trim().slice(0, TTS_MAX_CHARS);
   if (!trimmed) throw new TtsError('TTS_EMPTY', 'No text to read aloud.');
 
   try {
     // PRIMARY METHOD: Free Google Translate MP3 Generation
     let textToSpeak = trimmed;
+<<<<<<< HEAD
+=======
+
+>>>>>>> b49382c2ffcbd6aff43ec44a8d68d905faf0ed53
     if (language !== 'en') {
-      const translation = await translate(trimmed, { to: language, requestOptions: { signal } });
+      const translation = await provider(trimmed, { to: language, requestOptions: { signal } });
       textToSpeak = translation.text;
     }
 
+<<<<<<< HEAD
     const chunks = chunkText(textToSpeak);
     if (chunks.length === 0) throw new TtsError('TTS_EMPTY', 'No text to read aloud.');
 
@@ -110,6 +123,12 @@ export async function synthesize(text, language = 'en', { signal } = {}) {
 
     return { audio: Buffer.concat(buffers), mimeType: 'audio/mp3' };
     
+=======
+    return {
+      text: textToSpeak,
+      mimeType: 'text/plain',
+    };
+>>>>>>> b49382c2ffcbd6aff43ec44a8d68d905faf0ed53
   } catch (err) {
     if (err.name === 'AbortError' || signal?.aborted) throw new TtsError('CANCELLED', 'Cancelled.');
     
@@ -122,5 +141,16 @@ export async function synthesize(text, language = 'en', { signal } = {}) {
       if (fallbackErr instanceof TtsError) throw fallbackErr;
       throw new TtsError('TTS_UNAVAILABLE', 'Both TTS services failed.', { retryable: true });
     }
+<<<<<<< HEAD
+=======
+
+    console.error('translate error:', err.message);
+
+    if (err.message?.includes('TooManyRequests') || err.statusCode === 429) {
+      throw new TtsError('TTS_RATE_LIMIT', 'Translation is busy. Try later.', { retryable: true });
+    }
+
+    throw new TtsError('TTS_UNAVAILABLE', 'Translation service error.', { retryable: true });
+>>>>>>> b49382c2ffcbd6aff43ec44a8d68d905faf0ed53
   }
 }

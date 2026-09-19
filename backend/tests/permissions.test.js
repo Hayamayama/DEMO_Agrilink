@@ -109,7 +109,7 @@ test('hidden content is absent from the public feed and reads as not found', asy
   assert.equal((await member.post(`/api/forum/posts/${postId('market_01')}/replies`, { requestId: rid(), body: 'hello there' })).status, 404);
   assert.equal((await member.put(`/api/forum/posts/${postId('market_01')}/save`)).status, 404);
   const communities = (await guest.get('/api/forum/communities')).body.items;
-  assert.equal(communities.find((c) => c.slug === 'market-talk').postCount, 1);
+  assert.equal(communities.find((c) => c.slug === 'market-talk').postCount, 2);
   assert.equal((await mod.get(`/api/forum/posts/${postId('market_01')}`)).status, 200, 'moderators can still open it');
 
   // A hidden reply disappears too.

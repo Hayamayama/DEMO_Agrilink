@@ -16,9 +16,9 @@ function sameOriginWrites(req, _res, next) {
   next();
 }
 
-export function createFarmOpsRouter({ pool, auth }) {
+export function createFarmOpsRouter({ pool, auth, farmPriceService, weatherGetter }) {
   const router = Router();
-  const service = createFarmOpsService(pool);
+  const service = createFarmOpsService(pool, { farmPriceService, weatherGetter });
   const json = express.json({ limit: '16kb' });
   router.use(sameOriginWrites);
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -36,6 +36,12 @@ export function createFarmOpsRouter({ pool, auth }) {
   router.get('/', send((req) => service.farms(req.user)));
   router.post('/', json, send((req) => service.createFarm(req.user), (o) => (o.duplicate ? 200 : 201)));
   router.get('/:farmId/today', send((req) => service.overview(req.user, req.params.farmId, req.query.date)));
+  router.get('/:farmId/prices', send((req) => service.prices(req.user, req.params.farmId, String(req.query.crop || 'rice').toLowerCase())));
+  router.get('/:farmId/spray-assessment', asyncHandler(async (req, res) => {
+    const out = await service.sprayAssessment(req.user, req.params.farmId, req.query.date);
+    if (!out) return res.status(204).end();
+    res.json({ ok: true, ...out });
+  }));
   router.get('/:farmId/calendar', send((req) => service.calendar(req.user, req.params.farmId, req.query)));
   router.get('/:farmId/tasks', send((req) => service.listTasks(req.user, req.params.farmId, req.query)));
   router.get('/:farmId/upcoming', send((req) => {

@@ -47,7 +47,9 @@ export function createForumRouter({ pool, auth, config = loadForumConfig() }) {
     const profile = token ? await auth.session(token) : null;
     if (profile) {
       const r = (await pool.query('SELECT code, country_code FROM app.regions WHERE id = $1', [profile.regionId])).rows[0];
-      req.user = { ...profile, regionCode: r?.code ?? null, countryCode: r?.country_code ?? null };
+      const expert = (await pool.query('SELECT is_verified_expert,expert_title FROM app.users WHERE id=$1', [profile.id])).rows[0];
+      req.user = { ...profile, regionCode: r?.code ?? null, countryCode: r?.country_code ?? null,
+        isVerifiedExpert: Boolean(expert?.is_verified_expert), expertTitle: expert?.expert_title || null };
     }
     next();
   }));
@@ -64,7 +66,7 @@ export function createForumRouter({ pool, auth, config = loadForumConfig() }) {
   router.get('/regions', reads, send(async () => ({ items: await forum.listRegions() })));
   router.get('/tags', reads, send(async (req) => ({ items: await forum.listTags(req.query.community ? String(req.query.community) : null) })));
   router.get('/posts', reads, send((req) => forum.listPosts(req.user, req.query)));
-  router.get('/posts/:id', reads, send((req) => forum.getPost(req.user, req.params.id)));
+  router.get('/posts/:id', reads, send((req) => forum.getPost(req.user, req.params.id, req.query.lang ? String(req.query.lang) : null)));
 
   router.post('/posts', ...write('Sign in to post.'), send((req) => forum.createPost(req.user, req.body), (o) => (o.duplicate ? 200 : 201)));
   router.post('/posts/:id/replies', ...write('Sign in to reply.'), send((req) => forum.createReply(req.user, req.params.id, req.body), (o) => (o.duplicate ? 200 : 201)));

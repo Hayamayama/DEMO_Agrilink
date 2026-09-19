@@ -1,0 +1,14 @@
+[Unit]
+Description=AgriLink: sync daily mandi prices from data.gov.in
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/dogbark/backend
+EnvironmentFile=-/home/ubuntu/dogbark/backend/.env
+ExecStart=/usr/bin/node db/syncMandi.js
+# The shared sample key can stay rate limited; the script stops after MANDI_MAX_WAIT_MIN
+# (default 20) and the next timer run resumes.
+TimeoutStartSec=30min

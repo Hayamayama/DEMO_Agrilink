@@ -30,7 +30,7 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
   try {
     await client.query('BEGIN');
     await client.query(`INSERT INTO app.farms(id,name,owner_user_id,country_code,region_code,timezone,latitude,longitude)
-      VALUES ($1,'Green Field Cooperative',$2,'IN','IN-BR','Asia/Kolkata',25.59410,85.13760)
+      VALUES ($1,'Green Field Cooperative',$2,'IN','IN-UP-LKO','Asia/Kolkata',26.84670,80.94620)
       ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,owner_user_id=EXCLUDED.owner_user_id,country_code=EXCLUDED.country_code,
         region_code=EXCLUDED.region_code,timezone=EXCLUDED.timezone,latitude=EXCLUDED.latitude,longitude=EXCLUDED.longitude,updated_at=now()`, [farmId, owner.user_id]);
     for (const [m, role] of [[owner,'owner'],[manager,'manager'],[asha,'worker'],[arjun,'worker'],[viewer,'viewer']]) {
@@ -135,10 +135,27 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
       type=EXCLUDED.type,title_template=EXCLUDED.title_template,priority=EXCLUDED.priority,
       default_duration_minutes=EXCLUDED.default_duration_minutes,offset_days=EXCLUDED.offset_days,checklist=EXCLUDED.checklist,is_active=true,updated_at=now()`,
     [id(`template-${key}`),farmId,name,crop,type,title,priority,duration,offset,JSON.stringify(items)]);
-    const weatherPayload={provider:'open-meteo',source:'demo',stale:false,timezone:'Asia/Kolkata',current:{temperatureC:31.2,rainProbability:70,windSpeedKph:18},daily:[{date:demoDate,rainProbabilityMax:70,windSpeedMaxKph:18,weatherCode:61}],summary:'Rain probability 70% after 15:00',demo:true};
+    const weatherPayload={provider:'open-meteo',source:'demo',stale:false,timezone:'Asia/Kolkata',current:{temperatureC:28,relativeHumidity:72,
+      rainProbability:15,rainProbabilityNext4h:15,windSpeedKph:8.2,windGustKph:12.5,precipitationMm:0},
+      daily:[{date:demoDate,rainProbabilityMax:70,windSpeedMaxKph:18,weatherCode:61}],summary:'Rain probability 70% after 15:00',demo:true,
+      bestSprayWindow:{from:'06:00',to:'10:00',reason:'Lowest wind and temperature before noon'}};
     await client.query(`INSERT INTO app.farm_weather_snapshots(id,farm_id,provider,payload,fetched_at,expires_at)
       VALUES ($1,$2,'open-meteo',$3,$4,$5) ON CONFLICT(id) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=EXCLUDED.fetched_at,expires_at=EXCLUDED.expires_at`,
     [id('weather-demo'),farmId,weatherPayload,at(demoDate,9),at(date(2),9)]);
+    const priceSeeds = [
+      ['rice',2180,[["Kanpur APMC","Kanpur",2280,90,135]], [2100,2110,2120,2130,2140,2150,2180]],
+      ['wheat',2425,[["Kanpur Grain Market","Kanpur",2490,90,135]], [2390,2400,2405,2410,2415,2420,2425]],
+      ['onion',1850,[["Varanasi APMC","Varanasi",2110,315,473]], [1900,1880,1875,1860,1855,1840,1850]],
+    ];
+    for (const [crop,localPrice,nearby,trend] of priceSeeds) {
+      const payload={farmId,provider:'agmarknet',crop,currency:'INR',unit:'quintal',date:demoDate,source:'demo',stale:true,
+        fetchedAt:at(demoDate,9),localMarket:{name:'Lucknow APMC',district:'Lucknow',minPrice:localPrice-40,maxPrice:localPrice+45,modalPrice:localPrice,isLocal:true},
+        nearbyMarkets:nearby.map(([name,district,modalPrice,distanceKm,transportCostPerQt])=>({name,district,minPrice:modalPrice-35,maxPrice:modalPrice+40,
+          modalPrice,distanceKm,transportCostPerQt,netGainPerUnit:modalPrice-localPrice-transportCostPerQt})),sevenDayTrend:trend};
+      await client.query(`DELETE FROM app.price_snapshots WHERE farm_id=$1 AND crop=$2 AND payload_json->>'source'='demo'`,[farmId,crop]);
+      await client.query(`INSERT INTO app.price_snapshots(id,farm_id,crop,provider,state_name,payload_json,fetched_at,expires_at)
+        VALUES($1,$2,$3,'agmarknet','Uttar Pradesh',$4,$5,$6)`,[id(`price-${crop}`),farmId,crop,payload,at(demoDate,9),at(demoDate,10)]);
+    }
     const notifications = [
       ['asha-assignment',asha.user_id,'assignment','New task assigned','Check tomato supports on 22 Sep',taskId('tomato-supports')],
       ['manager-verify',manager.user_id,'verification','Work waiting for review','Drainage repair review is ready to verify',taskId('verify-drainage')],
@@ -149,7 +166,7 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
       ON CONFLICT(id) DO UPDATE SET user_id=EXCLUDED.user_id,type=EXCLUDED.type,title=EXCLUDED.title,body=EXCLUDED.body,task_id=EXCLUDED.task_id`,
     [id(`notification-${key}`),farmId,userId,type,title,body,linkedTask,`demo:${key}`]);
     await client.query('COMMIT');
-    return {farmId,demoDate,members:5+(testAdmin?1:0),testAdminOwner:Boolean(testAdmin),fields:fields.length,cropCycles:cycles.length,tasks:tasks.length,records:records.length,templates:templates.length,notifications:notifications.length};
+    return {farmId,demoDate,members:5+(testAdmin?1:0),testAdminOwner:Boolean(testAdmin),fields:fields.length,cropCycles:cycles.length,tasks:tasks.length,records:records.length,templates:templates.length,notifications:notifications.length,priceSnapshots:priceSeeds.length};
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 }
 

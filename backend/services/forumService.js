@@ -3,6 +3,7 @@ import { AppError, validation } from '../middleware/errors.js';
 import { tooMany } from '../middleware/rateLimits.js';
 import { POST_TYPES, REPORT_REASONS, DEFAULT_GUEST_REGION } from './forumMeta.js';
 import { cleanTitle, cleanBody, cleanNote, cleanRequestId } from './forumValidation.js';
+import { isConfigured, translateText } from './geminiProvider.js';
 
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
@@ -19,6 +20,7 @@ const SCORE = (type, alias) => `COALESCE((SELECT SUM(v.value) FROM app.forum_vot
 const POST_SELECT = `
   SELECT p.*, c.slug AS community_slug, c.name AS community_name,
          up.display_name AS author_name, ar.code AS author_region_code,
+         u.is_verified_expert, u.expert_title,
          r.code AS region_code, r.name AS region_name, r.country_code,
          ${SCORE('post', 'p')} AS score,
          (SELECT COUNT(*) FROM app.forum_replies x WHERE x.post_id = p.id AND NOT x.is_hidden)::int AS reply_count
@@ -26,6 +28,7 @@ const POST_SELECT = `
   JOIN app.forum_communities c ON c.id = p.community_id
   JOIN app.regions r ON r.id = p.region_id
   JOIN app.user_profiles up ON up.user_id = p.author_id
+  JOIN app.users u ON u.id = p.author_id
   LEFT JOIN app.regions ar ON ar.id = up.region_id`;
 
 export function createForumService({ pool, limiter, config }) {
@@ -61,7 +64,9 @@ export function createForumService({ pool, limiter, config }) {
       title: row.title,
       community: { slug: row.community_slug, name: row.community_name },
       tags: tags || [],
-      author: { displayName: row.author_name, regionCode: row.author_region_code },
+      author: { displayName: row.author_name, regionCode: row.author_region_code,
+        isVerifiedExpert: Boolean(row.is_verified_expert), expertTitle: row.expert_title || null },
+      language: row.language,
       countryCode: row.country_code,
       regionCode: row.region_code,
       locationScope: row.location_scope,
@@ -198,13 +203,29 @@ export function createForumService({ pool, limiter, config }) {
   }
 
   // ---------- detail ----------
-  async function getPost(viewer, rawId) {
+  async function translation(sourceType, sourceId, sourceLang, targetLang, original) {
+    if (!targetLang || targetLang === sourceLang || !['en','hi'].includes(targetLang)) return null;
+    const cached = (await q(`SELECT translated_text FROM app.translations_cache
+      WHERE source_type=$1 AND source_id=$2 AND target_lang=$3`, [sourceType, sourceId, targetLang])).rows[0];
+    if (cached) return { ...JSON.parse(cached.translated_text), targetLang, isTranslated: true };
+    if (!isConfigured()) return null;
+    const translated = {};
+    for (const [key, value] of Object.entries(original)) translated[key] = await translateText({ text: value, sourceLang, targetLang });
+    await q(`INSERT INTO app.translations_cache(source_type,source_id,target_lang,translated_text) VALUES($1,$2,$3,$4)
+      ON CONFLICT(source_type,source_id,target_lang) DO UPDATE SET translated_text=EXCLUDED.translated_text,created_at=now()`,
+    [sourceType, sourceId, targetLang, JSON.stringify(translated)]);
+    return { ...translated, targetLang, isTranslated: true };
+  }
+
+  async function getPost(viewer, rawId, targetLang = null) {
     const row = await findVisiblePost(rawId, viewer);
     const tags = (await tagsFor([row.id])).get(row.id);
     const post = serializePost(row, tags, { withBody: true });
 
-    const { rows: replyRows } = await q(`SELECT r.*, up.display_name AS author_name, rg.code AS author_region_code, ${SCORE('reply', 'r')} AS score
-      FROM app.forum_replies r JOIN app.user_profiles up ON up.user_id = r.author_id LEFT JOIN app.regions rg ON rg.id = up.region_id
+    post.translation = await translation('post', row.id, row.language, targetLang, { title: row.title, body: row.body });
+    const { rows: replyRows } = await q(`SELECT r.*, up.display_name AS author_name, rg.code AS author_region_code,
+      u.is_verified_expert,u.expert_title, ${SCORE('reply', 'r')} AS score
+      FROM app.forum_replies r JOIN app.user_profiles up ON up.user_id = r.author_id JOIN app.users u ON u.id=r.author_id LEFT JOIN app.regions rg ON rg.id = up.region_id
       WHERE r.post_id = $1 AND NOT r.is_hidden`, [row.id]);
     const myVotes = new Map();
     let vote = 0, saved = false;
@@ -220,7 +241,10 @@ export function createForumService({ pool, limiter, config }) {
       parentReplyId: r.parent_reply_id,
       depth,
       body: r.body,
-      author: { displayName: r.author_name, regionCode: r.author_region_code },
+      author: { displayName: r.author_name, regionCode: r.author_region_code,
+        isVerifiedExpert: Boolean(r.is_verified_expert), expertTitle: r.expert_title || null },
+      language: r.language,
+      source: r.source,
       score: r.score,
       viewerVote: myVotes.get(r.id) || 0,
       isAccepted: r.id === row.accepted_reply_id,
@@ -229,11 +253,15 @@ export function createForumService({ pool, limiter, config }) {
     });
     // Accepted first, then score, then oldest. Children (one level only) follow their parent, oldest first.
     const time = (r) => r.created_at.getTime();
+    const sourceRank = { expert: 0, official: 1, human: 2, ai: 3 };
     const tops = replyRows.filter((r) => !r.parent_reply_id).sort((a, b) =>
-      (b.id === row.accepted_reply_id) - (a.id === row.accepted_reply_id) || b.score - a.score || time(a) - time(b) || a.id.localeCompare(b.id));
+      (b.id === row.accepted_reply_id) - (a.id === row.accepted_reply_id) || sourceRank[a.source] - sourceRank[b.source]
+      || b.score - a.score || time(a) - time(b) || a.id.localeCompare(b.id));
     const replies = [];
     for (const t of tops) {
-      replies.push(shape(t, 0));
+      const shaped = shape(t, 0);
+      shaped.translation = await translation('reply', t.id, t.language, targetLang, { body: t.body });
+      replies.push(shaped);
       replyRows.filter((r) => r.parent_reply_id === t.id).sort((a, b) => time(a) - time(b)).forEach((c) => replies.push(shape(c, 1)));
     }
 
@@ -278,8 +306,9 @@ export function createForumService({ pool, limiter, config }) {
     if (recent >= config.maxPostsPerHour) throw tooMany('posts', HOUR);
 
     const id = await tx(async (db) => {
-      const { rows } = await db.query(`INSERT INTO app.forum_posts (author_id, community_id, region_id, type, title, body, location_scope)
-        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, [user.id, community.id, user.regionId, i.type, title, body, scope]);
+      const language = ['en','hi'].includes(i.language) ? i.language : 'en';
+      const { rows } = await db.query(`INSERT INTO app.forum_posts (author_id, community_id, region_id, type, title, body, location_scope,language)
+        VALUES ($1, $2, $3, $4, $5, $6, $7,$8) RETURNING id`, [user.id, community.id, user.regionId, i.type, title, body, scope,language]);
       const postId = rows[0].id;
       for (const t of tagRows) await db.query('INSERT INTO app.forum_post_tags (post_id, tag_id) VALUES ($1, $2)', [postId, t.id]);
       await remember(db, user, requestId, 'post', postId);
@@ -310,8 +339,10 @@ export function createForumService({ pool, limiter, config }) {
     if (recent >= config.maxRepliesPerHour) throw tooMany('replies', HOUR);
 
     const id = await tx(async (db) => {
-      const { rows } = await db.query('INSERT INTO app.forum_replies (post_id, author_id, parent_reply_id, body) VALUES ($1, $2, $3, $4) RETURNING id',
-        [post.id, user.id, parentId, body]);
+      const language = ['en','hi'].includes(i.language) ? i.language : 'en';
+      const source = user.isVerifiedExpert ? 'expert' : 'human';
+      const { rows } = await db.query('INSERT INTO app.forum_replies (post_id, author_id, parent_reply_id, body,language,source) VALUES ($1, $2, $3, $4,$5,$6) RETURNING id',
+        [post.id, user.id, parentId, body,language,source]);
       await db.query('UPDATE app.forum_posts SET last_activity_at = now(), updated_at = now() WHERE id = $1', [post.id]);
       await remember(db, user, requestId, 'reply', rows[0].id);
       return rows[0].id;
