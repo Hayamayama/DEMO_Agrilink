@@ -4,7 +4,7 @@ import { t } from '../i18n/index.js';
 
 // WMO weather_code -> [emoji, text label]. Text label is the fallback if the
 // handset font lacks emoji glyphs.
-function wmo(code) {
+export function wmo(code) {
   if (code === 0) return ['☀️', t('Clear')];
   if (code <= 3) return ['⛅', t('Cloudy')];
   if (code === 45 || code === 48) return ['🌫️', t('Fog')];
@@ -63,7 +63,7 @@ export default {
     );
     wrap.appendChild(head);
 
-    data.daily.forEach((d, i) => {
+    data.daily.slice(0, 3).forEach((d, i) => { // the API returns a week for Today's Farm
       const [ic, lb] = wmo(d.code);
       const row = el('item');
       row.append(

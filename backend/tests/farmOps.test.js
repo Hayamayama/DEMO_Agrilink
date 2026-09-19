@@ -143,3 +143,15 @@ test('a farmer can run several farms, each in its own region', async () => {
     assert.equal((await t.ops.overview(user, coop.id, '2026-09-19')).summary.total, 1);
   } finally { await t.close(); }
 });
+
+test('the weather row follows the chosen day: now, a forecast, or plainly nothing', async () => {
+  const { dayWeather } = await import('../services/farmOpsService.js');
+  const weather = { current: { time: '2026-09-19T10:00' }, daily: [
+    { date: '2026-09-19', code: 1, tmin: 22, tmax: 31, rain_prob: 10, rain_mm: 0, wind_max: 9 },
+    { date: '2026-09-20', code: 61, tmin: 21, tmax: 29, rain_prob: 70, rain_mm: 8, wind_max: 14 }] };
+  assert.equal(dayWeather(weather, '2026-09-19').basis, 'now');
+  assert.deepEqual(dayWeather(weather, '2026-09-20'), { basis: 'forecast', date: '2026-09-20', code: 61, tmin: 21, tmax: 29, rainProb: 70, rainMm: 8, windMax: 14 });
+  assert.equal(dayWeather(weather, '2026-09-18').basis, 'past');
+  assert.equal(dayWeather(weather, '2026-10-01').basis, 'beyond');
+  assert.equal(dayWeather(null, '2026-09-19'), null);
+});

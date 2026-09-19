@@ -2,6 +2,7 @@ import { el } from '../dom.js';
 import { farmOps, identity } from '../state.js';
 import * as api from '../farmOps/farmOpsApi.js';
 import { autoCap } from '../forum/forumUtils.js';
+import { wmo } from './weather.js';
 
 const STATUS = { scheduled:'□ Scheduled',assigned:'→ Assigned',accepted:'→ Accepted',in_progress:'▶ In progress',completed:'✓ Completed',verified:'✓✓ Verified',blocked:'× Blocked',delayed:'– Delayed',cancelled:'– Cancelled' };
 const dateShift = (iso, days) => { const d=new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate()+days); return d.toISOString().slice(0,10); };
@@ -25,13 +26,20 @@ const section = (root, title, items) => {
   root.append(el('ops-section-title', `${title} · ${items.length}`));
   items.forEach((t)=>root.append(taskRow(t)));
 };
+// Today: the conditions now. Another day in the coming week: its forecast. Otherwise it says so,
+// instead of showing today's weather under another date.
 const weatherRow = (data) => {
   if (!data.weather) return null;
-  const w=data.weather.current||{}, a=data.sprayAssessment;
-  const temp=Math.round(w.temperatureC??w.temp??0), wind=Math.round(w.windSpeedKph??w.wind_speed??0), humidity=Math.round(w.relativeHumidity??w.humidity??0);
+  const day=data.weatherDay||{basis:'now'}, a=data.sprayAssessment, w=data.weather.current||{};
+  let main;
+  if (day.basis==='forecast') { const [ic]=wmo(day.code); main=`${ic} ${day.tmin}–${day.tmax}°C · Rain ${day.rainProb}%${day.windMax!=null?` · W ${Math.round(day.windMax)}km/h`:''}`; }
+  else if (day.basis==='past') main='Past day · no forecast';
+  else if (day.basis==='beyond') main='No forecast this far ahead';
+  else { const [ic]=wmo(w.code??w.weatherCode); main=`${ic} ${Math.round(w.temperatureC??w.temp??0)}°C · W ${Math.round(w.windSpeedKph??w.wind_speed??0)}km/h · H ${Math.round(w.relativeHumidity??w.humidity??0)}%`; }
+  const meta = a ? `SPRAY: ${a.overall.toUpperCase()} · ${a.bestWindow?`${a.bestWindow.from}–${a.bestWindow.to}`:'no safe window'}`
+    : ['past','beyond'].includes(day.basis) ? '' : 'No spray task';
   const row=el(`ops-live-row ops-weather ops-${a?.overall||'unknown'}`);
-  row.append(el('ops-live-main',`☀ ${temp}°C · W ${wind}km/h · H ${humidity}%`),
-    el('ops-live-meta',a?`SPRAY: ${a.overall.toUpperCase()} · ${a.bestWindow.from}–${a.bestWindow.to}`:'No spray task'));
+  row.append(el('ops-live-main',main)); if(meta) row.append(el('ops-live-meta',meta));
   return row;
 };
 const marketRow = (m) => {
@@ -106,6 +114,15 @@ export const FarmCalendar = asyncScreen({ name:'FarmCalendar',title:'Calendar',
   onEnter(node,ctx){if(node?.dataset.date){farmOps.activeDate=node.dataset.date;ctx.router.push('TodayDashboard');}},
 });
 
+// Why each reading matters, and when to spray: the best window is worked out from the hourly forecast.
+function spraySection(root,spray){
+  const when=spray.basis==='forecast'?`forecast ${spray.at}`:spray.at?`now ${spray.at}`:'now';
+  root.append(el('ops-section-title',`SPRAY · ${spray.overall.toUpperCase()} · ${when}`));
+  const w=spray.bestWindow;
+  root.append(el(`ops-spray-window ops-${w?.status||'unsuitable'}`, w?`Best window ${w.from}–${w.to} (${w.hours} h). ${w.reason||''}`:spray.basis==='now'?'No safe spray window left today.':'No safe spray window this day.'));
+  for(const f of spray.factors){root.append(el(`ops-spray-factor ops-${f.status}`,`${f.param}: ${f.value??'–'}${f.value!=null?f.unit||'':''} · ${f.status}`));if(f.reason)root.append(el('ops-spray-reason',f.reason));}
+  root.append(el('ops-description',spray.disclaimer));
+}
 let detailActionBusy=false;
 const actionFor=(task,role)=> {
   if(task.status==='completed'&&['owner','manager'].includes(role))return ['verify','Verify'];
@@ -115,7 +132,7 @@ const actionFor=(task,role)=> {
 };
 export const FarmTaskDetail = asyncScreen({ name:'FarmTaskDetail',title:'Task Detail',
   load:(ctx)=>api.detail(ctx.params.id),
-  renderData(data){const t=data.item,root=el('ops-page');root.append(el(`ops-priority priority-${t.priority}`,`${t.priority.toUpperCase()} · ${t.type.toUpperCase()}`),el('ops-detail-title',t.title),el('ops-task-meta',`${t.fieldName||'No field'} · ${niceDate(t.localDate)}`),el('ops-task-meta',STATUS[t.status]||t.status));if(t.description)root.append(el('ops-description',t.description));const spray=data.sprayAssessment;if(spray){root.append(el('ops-section-title',`SPRAY CONDITIONS · ${spray.overall.toUpperCase()}`));for(const f of spray.factors){root.append(el(`ops-spray-factor ops-${f.status}`,`${f.param}: ${f.value}${f.unit||''} · ${f.status}`));}root.append(el('ops-description',spray.disclaimer));}if(data.checklist.length){root.append(el('ops-section-title',`CHECKLIST · ${data.checklist.filter(x=>x.completed_at).length}/${data.checklist.length}`));for(const c of data.checklist){const r=el('item ops-checklist');r.dataset.item=c.id;r.dataset.done=c.completed_at?'1':'';r.textContent=`${c.completed_at?'✓':'□'} ${c.label}`;root.append(r);}}const a=actionFor(t,farmOps.activeFarm?.role);if(a){const r=el('item ops-action',`${a[1]} task`);r.dataset.action=a[0];root.append(r);}if(t.status==='in_progress'&&t.assignments?.some((x)=>x.userId===identity.profile?.id)){const r=el('item ops-action','Report problem');r.dataset.action='block';root.append(r);}root.append(el('ops-section-title','HISTORY'));data.events.slice(-4).reverse().forEach(e=>root.append(el('ops-history',`${new Date(e.created_at).toLocaleString()} · ${e.to_status||e.event_type}`)));return root;},
+  renderData(data){const t=data.item,root=el('ops-page');root.append(el(`ops-priority priority-${t.priority}`,`${t.priority.toUpperCase()} · ${t.type.toUpperCase()}`),el('ops-detail-title',t.title),el('ops-task-meta',`${t.fieldName||'No field'} · ${niceDate(t.localDate)}`),el('ops-task-meta',STATUS[t.status]||t.status));if(t.description)root.append(el('ops-description',t.description));const spray=data.sprayAssessment;if(spray)spraySection(root,spray);if(data.checklist.length){root.append(el('ops-section-title',`CHECKLIST · ${data.checklist.filter(x=>x.completed_at).length}/${data.checklist.length}`));for(const c of data.checklist){const r=el('item ops-checklist');r.dataset.item=c.id;r.dataset.done=c.completed_at?'1':'';r.textContent=`${c.completed_at?'✓':'□'} ${c.label}`;root.append(r);}}const a=actionFor(t,farmOps.activeFarm?.role);if(a){const r=el('item ops-action',`${a[1]} task`);r.dataset.action=a[0];root.append(r);}if(t.status==='in_progress'&&t.assignments?.some((x)=>x.userId===identity.profile?.id)){const r=el('item ops-action','Report problem');r.dataset.action='block';root.append(r);}root.append(el('ops-section-title','HISTORY'));data.events.slice(-4).reverse().forEach(e=>root.append(el('ops-history',`${new Date(e.created_at).toLocaleString()} · ${e.to_status||e.event_type}`)));return root;},
   async onEnter(node,ctx){if(detailActionBusy)return;if(node?.dataset.item){detailActionBusy=true;try{await api.toggleChecklist(ctx.params.id,node.dataset.item,node.dataset.done!=='1');ctx.router.replace('FarmTaskDetail',{id:ctx.params.id});}catch(e){flash(e.message);}finally{detailActionBusy=false;}return;}const action=node?.dataset.action;if(action){detailActionBusy=true;try{await api.transition(ctx.params.id,action,action==='complete'?{resultCode:'done',result:{source:'keypad'},note:'Completed from Today’s Farm'}:action==='block'?{reason:'Problem reported by worker'}:{});ctx.router.replace('FarmTaskDetail',{id:ctx.params.id});}catch(e){flash(e.message);}finally{detailActionBusy=false;}}},
 });
 

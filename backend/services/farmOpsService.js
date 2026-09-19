@@ -25,6 +25,17 @@ const text = (v, field, max = 120) => {
 };
 const json = (v) => v == null ? null : v;
 
+// What the dashboard's weather row shows for the chosen day: the conditions now for today, that
+// day's forecast within the next week, and nothing (said plainly) for other days.
+export function dayWeather(weather, day) {
+  if (!weather) return null;
+  const today = weather.current?.time ? String(weather.current.time).slice(0, 10) : null;
+  if (!today || day === today) return { basis: 'now', date: day };
+  const d = (weather.daily || []).find((x) => x.date === day);
+  if (!d) return { basis: day < today ? 'past' : 'beyond', date: day };
+  return { basis: 'forecast', date: day, code: d.code, tmin: d.tmin, tmax: d.tmax, rainProb: d.rain_prob, rainMm: d.rain_mm, windMax: d.wind_max ?? null };
+}
+
 export function createFarmOpsService(pool, { farmPriceService = null, weatherGetter = null } = {}) {
   async function membership(userId, farmId, roles = ROLES) {
     const r = await pool.query(`SELECT f.*, m.role FROM app.farms f JOIN app.farm_members m ON m.farm_id=f.id
@@ -109,9 +120,9 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
       farmPriceService?.getFarmPrices(farm, 'rice').catch(() => null) || null,
       communityFor(user, day),
     ]);
-    const sprayAssessment = todays.some((t) => ['spraying','fertilizer'].includes(t.type)) && weather ? assessSprayConditions(weather) : null;
+    const sprayAssessment = todays.some((t) => ['spraying','fertilizer'].includes(t.type)) && weather ? assessSprayConditions(weather, { date: day }) : null;
     return { farm: { id: farm.id, name: farm.name, timezone: farm.timezone, role: farm.role }, date: day,
-      weather, sprayAssessment, marketSnapshot: marketSnapshot(prices), communityActivity, alerts: [],
+      weather, weatherDay: dayWeather(weather, day), sprayAssessment, marketSnapshot: marketSnapshot(prices), communityActivity, alerts: [],
       sections: { ...section, dueToday: section.due, completedToday: section.completed },
       summary: { total: todays.filter((t) => !['cancelled','skipped'].includes(t.status)).length,
         completed: todays.filter((t) => ['completed','verified'].includes(t.status)).length,
@@ -156,7 +167,8 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
       AND type IN ('spraying','fertilizer') AND status NOT IN ('cancelled','skipped') LIMIT 1`, [farmId, day])).rowCount;
     if (!exists) return null;
     const weather = await weatherForFarm(farm);
-    return weather ? { sprayAssessment: assessSprayConditions(weather), weather } : null;
+    const assessment = weather ? assessSprayConditions(weather, { date: day }) : null;
+    return assessment ? { sprayAssessment: assessment, weather } : null;
   }
 
   async function calendar(user, farmId, q) {
@@ -197,7 +209,7 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
     ]);
     const weather = ['spraying','fertilizer'].includes(r.rows[0].type) ? await weatherForFarm(farm) : null;
     return { item: shapeTask(r.rows[0]), checklist: checklist.rows, events: events.rows, result: result.rows[0] || null,
-      sprayAssessment: weather ? assessSprayConditions(weather) : null };
+      sprayAssessment: weather ? assessSprayConditions(weather, { date: isoDate(r.rows[0].local_date) }) : null };
   }
 
   async function createTask(user, farmId, b) {
