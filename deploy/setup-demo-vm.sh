@@ -37,6 +37,11 @@ DEMO_DATE=2026-09-19
 EOF
 fi
 
+# Demo migrations are applied by the VM's postgres administrator after replacing
+# the formal-role names. Give the demo runtime role access to every resulting
+# table and sequence, including append-only outbox/event tables added later.
+sudo -u postgres psql -v ON_ERROR_STOP=1 --dbname="$DB" -c "GRANT USAGE ON SCHEMA app TO $APP_ROLE; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA app TO $APP_ROLE; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA app TO $APP_ROLE"
+
 sudo install -m 0644 "$DIR/deploy/agrilink-demo.service" /etc/systemd/system/agrilink-demo.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now agrilink-demo
