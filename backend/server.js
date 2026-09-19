@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import weather from './routes/weather.js';
 import { aiRouter } from './routes/ai.js';
+import { ttsRouter } from './routes/tts.js';
 import { pricesRouter } from './routes/prices.js';
 import { createPool } from './db/pool.js';
 import { memoryRepo, pgRepo } from './services/priceRepo.js';
@@ -49,6 +50,7 @@ const prices = createPriceService(pool ? pgRepo(pool) : memoryRepo());
 app.use('/api/prices', pricesRouter(prices));
 app.use('/api/weather', weather);
 app.use('/api/ai', aiRouter());
+app.use('/api/tts', ttsRouter());
 if (pool) {
   try {
     const auth = createAuthService(pool);

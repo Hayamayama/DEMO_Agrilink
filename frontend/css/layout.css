@@ -19,3 +19,15 @@
 .entry-label { color: var(--dim); font-size: calc(var(--fs) * .8); text-transform: uppercase; }
 .entry-value { min-height: 24px; font-size: calc(var(--fs) * 1.15); word-break: break-all; }
 .entry-hint { margin-top: 4px; font-size: calc(var(--fs) * .76); }
+
+/* Cloud TTS Broadcaster toast */
+.tts-toast {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  padding: 4px var(--pad); text-align: center;
+  background: #1b5e20; color: #ffd400;
+  font-size: calc(var(--fs) * .85); font-weight: 700;
+  letter-spacing: .3px;
+  pointer-events: none;
+}
+.tts-toast[hidden] { display: none; }
+

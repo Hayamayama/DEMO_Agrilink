@@ -87,7 +87,6 @@ export default {
       return true; // swallow other digits: no accidental navigation
     }
     if (action === 'STAR') { ctx.router.push('AskAIHistory'); return true; }
-    if (action === 'HASH') { composer.reset(); ctx.router.push('AskAIInput'); return true; }
     return false;
   },
 

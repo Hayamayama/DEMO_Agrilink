@@ -56,7 +56,7 @@ export default {
     const head = el('', null);
     head.style.padding = 'var(--pad)';
     head.append(
-      el('', `📍 ${user.location.name}  # ▸`),
+      el('', `📍 ${user.location.name}  * ▸`),
       el('big', `${data.current.temp}°C`),
       el('', `${icon} ${label} · Rain ${t.rain_prob}%`),
     );
@@ -84,7 +84,7 @@ export default {
     return wrap;
   },
   onKey(action, ctx) {
-    if (action === 'HASH') {
+    if (action === 'STAR') {
       user.nextLocation();
       data = null; error = null; tried = false;
       ctx.rerender();

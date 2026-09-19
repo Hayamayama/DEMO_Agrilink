@@ -187,10 +187,6 @@ export default {
       case 'NUM_2': ctx.router.push('AskAISources', { sources: ctx.params.result.answer.sources }); return true;
       case 'NUM_3': askFarmers(ctx); return true;
       case 'STAR': toast(ctx, saveAnswer(ctx.params.question, ctx.params.result.answer) ? 'Saved on phone' : 'Nothing to save'); return true;
-      case 'HASH':
-        composer.reset();
-        ctx.router.replace('AskAIInput');
-        return true;
       default:
         return action.startsWith('NUM_'); // ignore other digits
     }

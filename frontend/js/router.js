@@ -1,4 +1,7 @@
 import { Focus } from './focus.js';
+import { readAloud, stop as stopTts, isPlaying } from './tts.js';
+import { extractScreenText } from './screenText.js';
+import { identity } from './state.js';
 
 // Screen stack kept in sync with browser history so the platform's Right Soft Key
 // ("back if history, else close") behaves correctly.
@@ -87,6 +90,15 @@ export function createRouter({ screens, els, ctxExtra = {} }) {
       case 'SOFT_R':
       case 'BACK': return (screen.softRight?.handler ?? (() => router.pop()))(ctx);
       default:
+        // Cloud TTS Broadcaster: # reads the current screen aloud after login.
+        // Screens that consume HASH in their onKey (e.g. T9 text input) will
+        // have returned true above, so this code only runs when # is unhandled.
+        if (action === 'HASH' && identity.profile) {
+          if (isPlaying()) { stopTts(); return; }
+          const text = extractScreenText(els.content);
+          if (text) readAloud(text, identity.profile.language || 'en');
+          return;
+        }
         if (action.startsWith('NUM_')) {
           const n = Number(action.slice(4));
           if (n >= 1 && focus.items[n - 1] && screen.numericSelect) {
