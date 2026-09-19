@@ -1,17 +1,12 @@
 import express from 'express';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { coded } from '../services/authService.js';
+import { AppError, errorHandler } from '../middleware/errors.js';
 
 const COOKIE = 'agrilink_session';
 
 function cookies(header = '') {
   return Object.fromEntries(header.split(';').map((part) => part.trim().split(/=(.*)/s)).filter(([key]) => key));
-}
-
-function sendError(res, err) {
-  const status = err.status || 500;
-  if (status >= 500) console.error(err);
-  res.status(status).json({ ok: false, error: { code: err.code || 'INTERNAL', message: status >= 500 ? 'Something went wrong. Please try again.' : err.message } });
 }
 
 function setSession(res, session, secure) {
@@ -27,7 +22,7 @@ export function requireUser(auth) {
       if (!user) throw coded('AUTH_REQUIRED', 'Sign in to continue.', 401);
       req.user = user;
       next();
-    } catch (err) { sendError(res, err); }
+    } catch (err) { next(err); }
   };
 }
 
@@ -36,7 +31,7 @@ export function authRouter({ auth, pool }) {
   // These supplement the per-account PIN lock. All Cloud Phone handsets share CloudMosa's egress
   // IPs, so the real limit is per phone number; the per-IP cap stays only as a guard against one
   // source walking through many account numbers.
-  const tooMany = (_req, res) => res.status(429).json({ ok: false, error: { code: 'RATE_LIMITED', message: 'Try again in a few minutes.' } });
+  const tooMany = (_req, _res, next) => next(new AppError('RATE_LIMITED', 'Try again in a few minutes.'));
   router.use('/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: true, legacyHeaders: false, handler: tooMany }));
   router.use('/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: false, legacyHeaders: false, handler: tooMany,
     keyGenerator: (req) => {
@@ -53,31 +48,31 @@ export function authRouter({ auth, pool }) {
       res.json({ ok: true, regions: regions.rows, crops: crops.rows });
     } catch (err) { next(err); }
   });
-  router.post('/signup', async (req, res) => {
+  router.post('/signup', async (req, res, next) => {
     try {
       const result = await auth.signup(req.body || {});
       setSession(res, result.session, auth.secureCookies);
       res.status(201).json({ ok: true, user: result.user });
-    } catch (err) { sendError(res, err); }
+    } catch (err) { next(err); }
   });
-  router.post('/login', async (req, res) => {
+  router.post('/login', async (req, res, next) => {
     try {
       const result = await auth.login(req.body || {});
       setSession(res, result.session, auth.secureCookies);
       res.json({ ok: true, user: result.user });
-    } catch (err) { sendError(res, err); }
+    } catch (err) { next(err); }
   });
-  router.get('/session', async (req, res) => {
-    try { res.json({ ok: true, user: await auth.session(sessionFromRequest(req)) }); } catch (err) { sendError(res, err); }
+  router.get('/session', async (req, res, next) => {
+    try { res.json({ ok: true, user: await auth.session(sessionFromRequest(req)) }); } catch (err) { next(err); }
   });
-  router.post('/logout', async (req, res) => {
+  router.post('/logout', async (req, res, next) => {
     try {
       await auth.logout(sessionFromRequest(req));
       res.clearCookie(COOKIE, { httpOnly: true, secure: auth.secureCookies, sameSite: 'lax', path: '/' });
       res.json({ ok: true });
-    } catch (err) { sendError(res, err); }
+    } catch (err) { next(err); }
   });
-  router.patch('/profile', requireUser(auth), async (req, res) => {
+  router.patch('/profile', requireUser(auth), async (req, res, next) => {
     try {
       const { displayName, village, language, regionId, cropIds } = req.body || {};
       if (!String(displayName ?? '').trim() || String(displayName).trim().length > 60) throw coded('INVALID_NAME', 'Name must be 1–60 characters.');
@@ -97,7 +92,8 @@ export function authRouter({ auth, pool }) {
         await client.query('COMMIT');
       } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
       res.json({ ok: true, user: await auth.profileFor(pool, req.user.id) });
-    } catch (err) { sendError(res, err); }
+    } catch (err) { next(err); }
   });
+  router.use(errorHandler);
   return router;
 }

@@ -13,12 +13,34 @@ export const DEMO_USERS = [
   ['10000008', '9100000008', 'Suresh Yadav', 'Varanasi', 'IN-UP-01', 'member', 'Experienced Rice Farmer'],
   ['10000009', '9100000009', 'Agri Government', 'Uttar Pradesh', 'IN-UP-01', 'member'],
   ['10000010', '9100000010', 'AgriLink AI', 'Online', 'IN-UP-01', 'member'],
+  // Uttar Pradesh districts with live mandi prices (migration 010, db/syncMandi.js): one member per
+  // district, two in Lucknow so Local Market has a buyer and a seller in the same district.
+  ['10000011', '9100000011', 'Rakesh Tyagi', 'Sardhana', 'IN-UP-MRT', 'member'],
+  ['10000012', '9100000012', 'Kavita Chauhan', 'Fatehabad', 'IN-UP-AGR', 'member'],
+  ['10000013', '9100000013', 'Imran Ali', 'Malihabad', 'IN-UP-LKO', 'member'],
+  ['10000014', '9100000014', 'Sunita Maurya', 'Pindra', 'IN-UP-VNS', 'member'],
+  ['10000015', '9100000015', 'Pooja Rawat', 'Bakshi Ka Talab', 'IN-UP-LKO', 'member'],
 ];
+// Crops the demo members grow (Settings > Crops). Market Prices lists a member's own crops first.
+// Codes are the ones syncMandi.js stores, so every one has live prices in Uttar Pradesh.
+export const DEMO_CROPS = {
+  10000002: ['rice', 'wheat'],
+  10000011: ['wheat', 'potato'],
+  10000012: ['potato', 'onion'],
+  10000013: ['rice', 'tomato'],
+  10000014: ['rice', 'wheat'],
+  10000015: ['onion', 'potato'],
+};
+export const CROP_NAMES = [['rice', 'Rice'], ['wheat', 'Wheat'], ['onion', 'Onion'], ['tomato', 'Tomato'], ['potato', 'Potato']];
 // Regions the demo needs that a fresh database may lack. Existing codes are left untouched.
 // [code, country, name, latitude, longitude] - centre points match migration 008.
 export const DEMO_REGIONS = [
   ['IN-BR', 'IN', 'Bihar', 25.5941, 85.1376], ['IN-UP-01', 'IN', 'Rampur, Uttar Pradesh', 28.8, 79.03],
   ['VN-AG', 'VN', 'An Giang', 10.3864, 105.4352], ['BD-RAJ', 'BD', 'Rajshahi', 24.3745, 88.6042],
+  // Same rows as migration 010.
+  ['IN-UP', 'IN', 'Uttar Pradesh', 26.8467, 80.9462],
+  ['IN-UP-MRT', 'IN', 'Meerut, Uttar Pradesh', 28.9845, 77.7064], ['IN-UP-AGR', 'IN', 'Agra, Uttar Pradesh', 27.1767, 78.0081],
+  ['IN-UP-LKO', 'IN', 'Lucknow, Uttar Pradesh', 26.8467, 80.9462], ['IN-UP-VNS', 'IN', 'Varanasi, Uttar Pradesh', 25.3176, 82.9739],
 ];
 export const VOTER_COUNT = 34;
 
@@ -95,4 +117,30 @@ export const POSTS = [
   { id:'seed_post_gov_02',author:'10000009',community:'farm-life',type:'discussion',ago:300,score:18,tags:['farm-life'],title:'[GOV] PMFBY crop insurance reporting reminder',body:'Report insured crop loss promptly through official PMFBY channels and keep the acknowledgement number.',replies:[] },
   { id:'seed_post_gov_03',author:'10000009',community:'crop-talk',type:'discussion',ago:500,score:17,tags:['rice'],title:'[GOV] Weather advisory for eastern Uttar Pradesh',body:'Monitor drainage after heavy rain and follow district agriculture office advisories for field operations.',replies:[] },
   { id:'seed_post_up_market_03',author:'10000008',community:'market-talk',type:'question',ago:35,score:6,tags:['wheat','price-report'],title:'Comparing Lucknow and Kanpur mandi wheat prices',body:'The higher quote may not cover transport and loading. What transport cost per quintal are farmers seeing?',replies:[['10000010','Compare the same grade and subtract transport and loading from each quote. This is an AI suggestion, not financial advice.',0,'ai'],['10000006','Also confirm moisture deductions because quoted and realized prices can differ.',5,'expert']] },
+  // Uttar Pradesh district members (10000011-10000015).
+  { id: 'seed_post_up_meerut_wheat_01', author: '10000011', community: 'crop-talk', type: 'question', ago: 150, score: 9, tags: ['wheat', 'soil'], solved: 1,
+    title: 'How soon do you sow wheat after the rice harvest?',
+    body: 'Our rice field near Sardhana will be clear in about three weeks and the soil still holds moisture. How long do others wait before sowing wheat?',
+    replies: [
+      ['10000006', 'Sow when the soil is moist but not sticky. Ask your KVK which variety suits late sowing in western UP.', 6],
+      ['10000014', 'We sow within a week of harvest to use the leftover moisture.', 2],
+    ] },
+  { id: 'seed_post_up_agra_potato_01', author: '10000012', community: 'market-talk', type: 'local_report', ago: 45, score: 7, tags: ['price-report', 'buyer-demand'],
+    title: 'Potato buyers near Fatehabad want graded bags',
+    body: 'Two traders asked for bags sorted by size before they would quote. Ungraded lots got a lower offer. This is my own report, not an official quote. Is grading worth the labour?',
+    replies: [
+      ['10000011', 'In Meerut we sort into two sizes. It took one extra day for 40 bags, but the offer improved.', 3],
+      ['10000007', 'Check the mandi price in Market Prices before and after grading so you know the real difference.', 4],
+    ] },
+  { id: 'seed_post_up_lucknow_tomato_01', author: '10000013', community: 'crop-talk', type: 'question', ago: 95, score: 8, tags: ['vegetables', 'disease'], solved: 1,
+    title: 'Tomatoes cracking after uneven watering',
+    body: 'Some tomatoes in Malihabad are cracking near the stem after a dry spell followed by heavy watering. Is this a disease or a watering problem?',
+    replies: [
+      ['10000006', 'Cracking after uneven watering is common. Water lightly and regularly, and look for spots or rot before suspecting disease.', 5],
+      ['10000015', 'Mine did the same last year. Mulching kept the soil evenly moist.', 2],
+    ] },
+  { id: 'seed_post_up_varanasi_transport_01', author: '10000014', community: 'farm-life', type: 'discussion', ago: 260, score: 5, tags: ['transport', 'help-needed'],
+    title: 'Sharing a trolley to the mandi from Pindra',
+    body: 'I will have about 12 quintal of rice next week. Does anyone near Pindra want to share one tractor trolley to the mandi to cut the transport cost?',
+    replies: [['10000008', 'I can join if you go on Tuesday. Agree the loading cost before leaving.', 3]] },
 ];

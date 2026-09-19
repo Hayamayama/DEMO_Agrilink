@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
+    "smoke": "node scripts/smoke.js",
     "db:migrate": "node db/migrate.js",
     "forum:seed": "node db/forumSeed.js",
     "forum:dev": "node dev/forumDevServer.js",

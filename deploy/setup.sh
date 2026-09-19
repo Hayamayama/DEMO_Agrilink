@@ -10,6 +10,11 @@ SNIP=/etc/nginx/snippets/agrilink.conf
 MAP=/etc/nginx/conf.d/agrilink-map.conf
 
 [ -d "$DIR/.git" ] && git -C "$DIR" pull --ff-only || git clone "$REPO" "$DIR"
+
+# CI tests Node 22 (.nvmrc); Node 18 is end-of-life. Upgrade steps: docs/CODEBASE_STATUS.md, 部署 > Node 版本.
+if [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 22 ]; then
+  echo "WARNING: this VM runs node $(node -v); CI tests Node 22. See docs/CODEBASE_STATUS.md (部署 > Node 版本)." >&2
+fi
 (cd "$DIR/backend" && npm ci --omit=dev)
 
 sudo cp "$DIR/deploy/agrilink.service" /etc/systemd/system/agrilink.service

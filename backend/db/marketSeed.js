@@ -12,7 +12,7 @@ import { createMarketService } from '../services/marketService.js';
 
 const DAY = 86400000;
 const dayOffset = (n, now = Date.now()) => new Date(now + n * DAY).toISOString().slice(0, 10);
-const CROPS = [['rice', 'Rice'], ['wheat', 'Wheat'], ['onion', 'Onion'], ['tomato', 'Tomato']];
+const CROPS = [['rice', 'Rice'], ['wheat', 'Wheat'], ['onion', 'Onion'], ['tomato', 'Tomato'], ['potato', 'Potato']];
 
 // [name in DEMO_USERS] -> Ravi and Meena share a region, so they are the two-phone demo pair.
 const LISTINGS = [
@@ -24,12 +24,22 @@ const LISTINGS = [
   ['asha-wheat', 'Asha P.', 'wheat', 15, 'quintal', 'negotiable', 2300, 'A', 2, 'pickup'],
   ['minh-rice', 'Minh Tran', 'rice', 2, 'ton', 'negotiable', 8500000, 'not_graded', 3, 'seller_delivery'],
   ['rahim-onion', 'Rahim U.', 'onion', 200, 'kg', 'negotiable', 45, 'not_graded', 1, 'pickup'],
+  // Uttar Pradesh districts. Browsing defaults to the member's own district. Prices sit near the
+  // live mandi prices of 2026-09-19 (Market Prices), so the two screens do not contradict each other.
+  ['imran-tomato', 'Imran Ali', 'tomato', 150, 'kg', 'negotiable', 17, 'A', 1, 'pickup'],
+  ['pooja-potato', 'Pooja Rawat', 'potato', 8, 'quintal', 'negotiable', 650, 'B', 2, 'pickup'],
+  ['rakesh-wheat', 'Rakesh Tyagi', 'wheat', 25, 'quintal', 'negotiable', 2425, 'A', 3, 'negotiable'],
+  ['rakesh-potato', 'Rakesh Tyagi', 'potato', 40, 'bag', 'negotiable', 340, 'not_graded', 1, 'pickup'],
+  ['kavita-potato', 'Kavita Chauhan', 'potato', 12, 'quintal', 'negotiable', 600, 'A', 2, 'pickup'],
+  ['sunita-rice', 'Sunita Maurya', 'rice', 12, 'quintal', 'negotiable', 2750, 'A', 5, 'seller_delivery'],
 ];
 const REQUESTS = [
   // key, buyer, crop, quantity, unit, min, max, neededInDays, fulfillment
   ['ravi-tomato', 'Ravi K.', 'tomato', 500, 'kg', 24, 30, 3, 'buyer_pickup'],
   ['meena-rice', 'Meena S.', 'rice', 10, 'quintal', 2100, 2300, 4, 'buyer_pickup'],
   ['asha-onion', 'Asha P.', 'onion', 250, 'kg', 15, 20, 3, 'buyer_pickup'],
+  ['pooja-tomato', 'Pooja Rawat', 'tomato', 200, 'kg', 14, 18, 2, 'buyer_pickup'],
+  ['rakesh-onion', 'Rakesh Tyagi', 'onion', 3, 'quintal', 1800, 2200, 4, 'buyer_pickup'],
 ];
 
 export async function seedMarketDemo(pool, { env = process.env, now = Date.now(), log = () => {} } = {}) {
@@ -96,6 +106,9 @@ export async function seedMarketDemo(pool, { env = process.env, now = Date.now()
     await q(`INSERT INTO app.market_ratings (deal_id, rater_id, ratee_id, stars) VALUES ($1,$2,$3,5), ($1,$3,$2,5) ON CONFLICT DO NOTHING`, [deal.id, ravi.id, meena.id]);
   }
 
+  // e) Lucknow: Pooja offers on Imran's tomatoes -> waiting for Imran to answer
+  await market.offerOnListing(users['Pooja Rawat'], ids['imran-tomato'], { requestId: 'seed-mkt-offer-e', ...terms(80, 16, { note: 'For my shop in Bakshi Ka Talab' }) });
+
   // Keep the demo fresh: open demo posts and live offers are pushed forward on every run.
   await q(`UPDATE app.market_listings SET expires_at = now() + interval '7 days', available_date = GREATEST(available_date, current_date), updated_at = now()
            WHERE is_demo AND status IN ('open','partially_reserved','reserved')`);
@@ -103,7 +116,7 @@ export async function seedMarketDemo(pool, { env = process.env, now = Date.now()
            WHERE is_demo AND status IN ('open','partially_reserved')`);
   await q(`UPDATE app.market_offers SET expires_at = now() + interval '7 days' WHERE status IN ('open','countered')
            AND (listing_id = ANY($1::uuid[]))`, [Object.values(ids)]);
-  log(`market demo: ${LISTINGS.length} listings, ${REQUESTS.length} requests, 4 negotiations`);
+  log(`market demo: ${LISTINGS.length} listings, ${REQUESTS.length} requests, 5 negotiations`);
   return { listings: LISTINGS.length, requests: REQUESTS.length };
 }
 

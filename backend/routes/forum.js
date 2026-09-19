@@ -1,6 +1,7 @@
 import express, { Router } from 'express';
 import { sessionFromRequest } from './auth.js';
 import { AppError, asyncHandler, forumNotFound } from '../middleware/errors.js';
+import { sameOriginWrites } from '../middleware/sameOrigin.js';
 import { limitByUser, createLimiter } from '../middleware/rateLimits.js';
 import { createForumService } from '../services/forumService.js';
 
@@ -14,20 +15,6 @@ export function loadForumConfig(env = process.env) {
     reportsPerDay: int(env.REPORTS_PER_DAY, 10),
     readsPerMinute: int(env.FEED_READS_PER_MINUTE, 120),
   };
-}
-
-// Cookies are SameSite=Lax; on top of that, reject browser-originated writes whose
-// Origin does not match the host we were reached on.
-function sameOriginWrites(req, _res, next) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  const origin = req.headers.origin;
-  if (origin) {
-    let host = null;
-    try { host = new URL(origin).host; } catch { /* fallthrough */ }
-    const allowed = [req.headers.host, req.headers['x-forwarded-host']].filter(Boolean);
-    if (!host || !allowed.includes(host)) return next(new AppError('FORBIDDEN', 'Cross-site request blocked.'));
-  }
-  next();
 }
 
 // The forum reuses the app-wide identity (routes/auth.js + services/authService.js): `auth.session(token)`
