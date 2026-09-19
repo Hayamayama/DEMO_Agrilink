@@ -273,3 +273,9 @@
 
 - **做了什麼**：組員本機重啟後，Ask AI 按 1（黃葉）得到 Gemini 真實回答：無 BASIC TIPS 標籤，含 Bottom line、Do now 2 項、Watch for、Local context、Ask next 2 題，格式驗證通過。
 - **給組員的注意事項**：本機驗證只涵蓋文字問答；照片、語音、印地語輸出尚未用真實 Gemini 測過。桌機寬螢幕看會被拉寬，要看實際樣子請用瀏覽器 DevTools 設 240×320。
+
+## 202609191401 · Ask AI 推上 main（部署待執行）
+
+- **做了什麼**：commit `1695e72`（Ask AI 全部檔案，確認 `.env` 未進版控、diff 內無 API key），rebase 到最新 main（含 Kris 的 CEDA 同步，`package.json` 無衝突），合併後 60 項測試全過，已 push。
+- **發現的問題**：本機 SSH key 沒有主機權限（`ubuntu@`、`root@` 都 Permission denied），無法代為部署。
+- **給組員的注意事項**：部署前主機 `backend/.env` 必須有 `GEMINI_API_KEY` 且 `GEMINI_MODEL=gemini-3.5-flash-lite`，再跑 `bash ~/dogbark/deploy/setup.sh`。
