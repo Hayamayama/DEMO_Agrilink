@@ -319,3 +319,9 @@
 - **發現的問題**：答案頁按 `1` 其實會進 Follow-up 輸入畫面，但輸入框是空的，使用者看不出有反應，也不知道卡片上的兩個追問怎麼問。另外 Gemini 有時把追問寫成指示（"Upload a clear photo…"）而不是問題。
 - **做了什麼改動**：按 `1`（或在 Ask next 卡片按 Enter）進入 Follow-up 時自動填入第一個建議追問，提示「Send to ask · ▲▼ other (1/2)」，Send 直接送出、上/下鍵換另一題；系統提示新增規則，追問必須是農民口吻的問題。本機用瀏覽器走過：按 1 → 預填 → 下鍵換題 → Enter 送出 → 收到答案；62 項測試通過。
 - **給組員的注意事項**：預填只在從答案頁進入時發生一次，使用者刪掉後不會再自動填回。
+
+## 202609191434 · 部署「Ask next 預填追問」修正
+
+- **做了什麼**：執行 `deploy/setup.sh`，主機更新到 `2ae7808`，服務 active，日誌 `ai: gemini configured`。
+- **驗證結果**：線上前端已含預填邏輯；對線上 `/api/ai/ask` 實測（稻葉褐斑）為真實 Gemini 回答（`fallback:false`），追問為問句：「Are the spots spreading fast?」「Should I spray fungicide now?」。
+- **給組員的注意事項**：手機/瀏覽器若仍看到舊畫面，強制重新整理以清除前端快取。
