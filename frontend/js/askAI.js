@@ -34,7 +34,9 @@ export const composer = {
   },
   get attachmentLabel() {
     if (this.image) return this.image.isDemoSample ? 'DEMO PHOTO' : 'PHOTO READY';
-    if (this.audio) return `VOICE ${String(this.audio.seconds).padStart(2, '0')}s`;
+    if (this.audio) return this.audio.seconds
+      ? `VOICE ${String(this.audio.seconds).padStart(2, '0')}s`
+      : 'VOICE READY';
     return 'NO ATTACHMENT';
   },
   get hasContent() { return Boolean(this.text.trim() || this.image || this.audio); },

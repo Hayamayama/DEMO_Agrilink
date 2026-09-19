@@ -2,6 +2,7 @@
 // Cloud Phone runtime exposes either: every entry point reports what is possible
 // so the UI can show a real disabled state instead of failing at press time.
 export const MAX_IMAGE_BYTES = 734003;   // ~700 KB, matches the server limit
+export const MAX_AUDIO_BYTES = 2.5 * 1024 * 1024;
 export const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 export const MAX_EDGE = 1024;
 export const JPEG_QUALITY = 0.72;
@@ -15,15 +16,18 @@ export const DEMO_SAMPLES = [
 // Cloud Phone exposes its own async feature detection (navigator.hasFeature); the
 // standard APIs can exist while the handset client still has no microphone/picker.
 // Filled by loadFeatures(); null = unknown, so browsers without hasFeature are unaffected.
-const platform = { audio: null, image: null, loaded: false };
+const platform = { audioCapture: null, audioUpload: null, image: null, loaded: false };
 
 export async function loadFeatures() {
   if (platform.loaded || typeof navigator.hasFeature !== 'function') return platform;
   const ask = async (name) => {
     try { return Boolean(await navigator.hasFeature(name)); } catch { return null; }
   };
-  platform.audio = await ask('AudioCapture');
-  platform.image = await ask('ImageUpload');
+  [platform.audioCapture, platform.audioUpload, platform.image] = await Promise.all([
+    ask('AudioCapture'),
+    ask('AudioUpload'),
+    ask('ImageUpload'),
+  ]);
   platform.loaded = true;
   return platform;
 }
@@ -31,14 +35,61 @@ export async function loadFeatures() {
 export function capabilities() {
   const input = document.createElement('input');
   input.type = 'file';
+  const cloudPhone = typeof navigator.hasFeature === 'function';
+  const voiceCapture = Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder)
+    && platform.audioCapture !== false;
+  const voiceUpload = input.type === 'file' && platform.audioUpload !== false;
   return {
     // A file input exists almost everywhere; `capture` only hints at the camera.
     photo: input.type === 'file' && platform.image !== false,
     camera: 'capture' in input,
-    voice: Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder) && platform.audio !== false,
+    // Keypad Cloud Phone clients must not enter getUserMedia: some expose the
+    // API but provide no usable way to confirm its permission dialog.
+    voice: cloudPhone ? voiceUpload : voiceCapture || voiceUpload,
+    voiceCapture,
+    voiceUpload,
+    // Cloud Phone's native audio picker avoids a getUserMedia permission dialog
+    // that cannot be operated on some keypad handsets (including the NEO R60+).
+    // Prefer this while feature detection is still pending too, so a fast key
+    // press can never race into the unusable permission prompt. If AudioUpload
+    // later resolves false, the Voice option is disabled instead of using GUM.
+    preferVoiceUpload: cloudPhone,
     secure: window.isSecureContext !== false,
     platform: { ...platform },
   };
+}
+
+/**
+ * Opens Cloud Phone's native audio picker/recorder without getUserMedia.
+ * `capture` is only a hint; clients may offer an existing recording instead.
+ */
+export function pickAudio() {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    input.capture = 'microphone';
+    input.hidden = true;
+    let settled = false;
+    const done = (fn, value) => {
+      if (!settled) {
+        settled = true;
+        input.remove();
+        fn(value);
+      }
+    };
+
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (!file) return done(resolve, null);
+      if (file.size > MAX_AUDIO_BYTES) {
+        return done(reject, new Error('Recording is too large. Keep it under 30 seconds.'));
+      }
+      return done(resolve, file);
+    });
+    document.body.appendChild(input);
+    input.click();
+  });
 }
 
 // How long to wait for a permission prompt before giving up. A feature-phone

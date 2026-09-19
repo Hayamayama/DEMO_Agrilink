@@ -1,6 +1,6 @@
 import { el, isCompact } from '../dom.js';
 import { composer, ask, history, track } from '../askAI.js';
-import { capabilities, loadFeatures, pickPhoto, loadDemoSample, DEMO_SAMPLES, VoiceRecorder, MAX_SECONDS, PERMISSION_WAIT_MS } from '../media.js';
+import { capabilities, loadFeatures, pickPhoto, pickAudio, loadDemoSample, DEMO_SAMPLES, VoiceRecorder, MAX_SECONDS, PERMISSION_WAIT_MS } from '../media.js';
 
 // Options, Photo, Voice and History screens. Options *replaces* itself with the
 // chosen screen so the back stack stays Home → (Input) → Photo/Voice, never
@@ -23,7 +23,14 @@ function optionItems() {
   const media = capabilities();
   const items = [
     { id: 'photo', label: 'Photo', note: media.photo ? (media.camera ? 'Camera or gallery' : 'Choose a file') : 'Demo samples only' },
-    { id: 'voice', label: 'Voice', note: media.voice ? 'Up to 30 seconds' : 'Not available on this device', disabled: !media.voice },
+    {
+      id: 'voice',
+      label: 'Voice',
+      note: media.voice
+        ? (media.preferVoiceUpload || !media.voiceCapture ? 'Use phone recorder' : 'Up to 30 seconds')
+        : 'Not available on this device',
+      disabled: !media.voice,
+    },
     { id: 'history', label: 'History', note: `${history().length} recent` },
     { id: 'language', label: 'Language', note: composer.language === 'hi' ? 'हिंदी (Hindi)' : 'English' },
   ];
@@ -177,14 +184,36 @@ export const AskAIPhoto = {
 
 let recorder = null;
 let player = null;
+let voiceGeneration = 0;
 const voice = { state: 'idle', seconds: 0, blob: null, error: '' };
 
 function resetVoice() {
+  voiceGeneration += 1;
   recorder?.cancel();
   recorder = null;
   player?.pause();
   player = null;
   Object.assign(voice, { state: 'idle', seconds: 0, blob: null, error: '' });
+}
+
+async function chooseVoiceFile(ctx) {
+  resetVoice();
+  const generation = voiceGeneration;
+  voice.state = 'choosing';
+  ctx.rerender();
+  try {
+    const blob = await pickAudio();
+    if (generation !== voiceGeneration) return;
+    voice.blob = blob;
+    voice.seconds = null;
+    voice.state = blob ? 'done' : 'idle';
+    voice.error = blob ? '' : 'No recording chosen.';
+  } catch (err) {
+    if (generation !== voiceGeneration) return;
+    voice.state = 'idle';
+    voice.error = err?.message || 'Recording could not be read.';
+  }
+  ctx.rerender();
 }
 
 function sendVoice(ctx) {
@@ -198,9 +227,14 @@ function sendVoice(ctx) {
 }
 
 async function toggleRecord(ctx) {
+  if (voice.state === 'choosing') return;
   if (voice.state === 'starting') return; // waiting on the permission prompt
   if (voice.state === 'recording') { recorder.stop(); return; }
   if (voice.state === 'done') { sendVoice(ctx); return; }
+  if (capabilities().preferVoiceUpload || !capabilities().voiceCapture) {
+    await chooseVoiceFile(ctx);
+    return;
+  }
   resetVoice();
   recorder = new VoiceRecorder({
     onTick: (s) => {
@@ -252,13 +286,14 @@ async function toggleRecord(ctx) {
 export const AskAIVoice = {
   name: 'AskAIVoice',
   title: 'Voice',
-  statusBadge: () => ({ starting: '… MIC', recording: '● REC', done: `${voice.seconds}s` }[voice.state] || ''),
+  statusBadge: () => ({ choosing: '… FILE', starting: '… MIC', recording: '● REC', done: voice.seconds ? `${voice.seconds}s` : 'READY' }[voice.state] || ''),
   softLeft: {
     label: () => (voice.state === 'done' ? 'Redo' : ''),
     handler: (ctx) => { if (voice.state === 'done') { resetVoice(); ctx.rerender(); } },
   },
   softCenter: {
-    label: () => ({ starting: '…', recording: 'Stop', done: 'Send' }[voice.state] || 'Record'),
+    label: () => ({ choosing: '…', starting: '…', recording: 'Stop', done: 'Send' }[voice.state]
+      || (capabilities().preferVoiceUpload || !capabilities().voiceCapture ? 'Choose' : 'Record')),
     handler: (ctx) => toggleRecord(ctx),
   },
   softRight: { label: 'Cancel', handler: (ctx) => { resetVoice(); ctx.router.pop(); } },
@@ -270,10 +305,13 @@ export const AskAIVoice = {
     for (let i = 0; i < 5; i++) level.appendChild(el('ai-level-bar'));
     mic.append(el('ai-orb'), level);
     wrap.appendChild(mic);
-    wrap.appendChild(el('ai-timer', `${String(voice.seconds).padStart(2, '0')}s / ${MAX_SECONDS}s`));
+    wrap.appendChild(el('ai-timer', voice.seconds == null ? 'RECORDING READY' : `${String(voice.seconds).padStart(2, '0')}s / ${MAX_SECONDS}s`));
 
     const hint = {
-      idle: 'Press Enter and ask your question.',
+      idle: capabilities().preferVoiceUpload || !capabilities().voiceCapture
+        ? 'Press Enter to open the phone recorder.'
+        : 'Press Enter and ask your question.',
+      choosing: 'Opening phone recorder…',
       starting: 'Allow the microphone when the phone asks.',
       recording: 'Listening… Enter to stop.',
       done: '1 Play · Enter Send · Left Redo',
@@ -290,7 +328,7 @@ export const AskAIVoice = {
   },
   // Leaving mid-recording must release the microphone.
   onHide() {
-    if (voice.state === 'recording' || voice.state === 'starting') resetVoice();
+    if (voice.state === 'recording' || voice.state === 'starting' || voice.state === 'choosing') resetVoice();
     player?.pause();
   },
   onKey(action) {
