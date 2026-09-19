@@ -2,7 +2,8 @@
 //  - arrows / Enter: standard key values
 //  - left soft key: Escape (kc 27)
 //  - right soft key: NO keydown reaches the page; the platform handles it as history.back()/close
-//  - digits report code=DigitN, star = NumpadMultiply (kc 106), '#' arrives as Digit3 (+shift?)
+//  - digits report code=DigitN, star = NumpadMultiply (kc 106)
+//  - '#' arrives as key="#" code=Digit3 kc=51 shift=false, so e.key tells it apart from '3'
 // Open the app with ?debug=1 to see raw values when checking a new device.
 export const KEYMAP = {
   ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
