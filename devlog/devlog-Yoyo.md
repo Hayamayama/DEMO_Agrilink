@@ -361,3 +361,27 @@
   - 示範帳號手機 `9100000001`–`9100000005`，PIN 由 `DEMO_USER_PIN` 設定；production 沒設 PIN 時 seed 會拒絕執行。seed 也會補上 `IN-BR`、`VN-AG`、`BD-RAJ` 三個 region（會出現在註冊的地區清單）。
   - 我把 `users_role_check` 加了 `moderator`；如果 admin 程式有寫死角色清單請留意。
   - 沒做：照片上傳（P1）、reply-to-reply 的按鍵入口。Cloud Phone 實機鍵碼尚未驗證。詳見 `docs/FARMER_CIRCLE.md`。
+
+## 202609191558 · Local Market（buysell_exchange）PostgreSQL schema：migration 006
+
+- **想解決的問題**：`docs/buysell_exchange.md` 的資料模型是 SQLite（TEXT id、REAL、`district_code`、`users`），不能直接搬到主機的 PostgreSQL `app` schema。需要轉成符合 001–005 慣例的版本，並把 PRD 的不變條件盡量交給資料庫保證。
+- **發現的問題**：`002_marketplace.sql` 已有簡化版 `app.listings / listing_interests`（目前沒有任何程式使用）。migration 是 append-only，不能改 002。
+- **做了什麼改動**
+  - 新增 `backend/db/migrations/006_market_exchange.sql`，全部在 `app` schema：`market_listings / market_buy_requests / market_offers / market_offer_revisions / market_deals / market_ratings / market_reports / market_blocks / market_request_ids / market_events`。用 `market_` 前綴避開 002 的 `listings`，002 的表保留但**不要再往上蓋**；`notifications`、`outbox_events` 沿用 002。
+  - 型別對照：`uuid` 主鍵、`numeric` 金額/數量、`timestamptz`、`date/time`；PRD 的 `district_code` → `region_id`（`app.regions`）、作物 → `crop_id`（`app.crops`）、使用者 → `app.users`。
+  - 資料庫層保證：`reserved_quantity + sold_quantity <= quantity`（不會超賣）；offer 必須剛好指向 listing 或 buy request、不能自己對自己出價、同一人對同一標的只能有一筆進行中的 offer（partial unique index）；offer revision 與 `market_events` 用 trigger 禁止 UPDATE/DELETE，且 app 角色只有 INSERT/SELECT；deal 的 CHECK：雙方都確認才能 `agreed`、要有取貨日才能 `pickup_scheduled`、要有交貨驗證/買方收貨/付款狀態才能 `completed`、取消要有人與原因；評價 trigger 限定「已完成 deal 的雙方、各一次」。
+  - `notifications_type_check` 放寬加入 `market_offer`、`market_deal`（同 005 放寬 role 的作法）。
+  - 新增 `backend/tests/marketSchema.test.js`（PGlite 跑 001/002/004/006，共 10 項），全套 109 項測試通過。
+- **給組員的注意事項**
+  - **需要先套用 migration 006**（migrator 或 postgres），且要在 002 之後；本次只有 schema，尚無 API/前端，所以不套用也不影響現有功能。
+  - `latitude/longitude` 是私有欄位，公開 API 只能回 `public_location_label`，不可回座標。
+  - 取貨 4 位數代碼**不存資料庫**：由 service 用 `HMAC(secret, deal_id)` 取 4 位數算出（買方要看得到，賣方輸入驗證），表內只存失敗次數與鎖定時間；4 位數只有一萬種，所以驗證一定要限制次數。
+  - 狀態轉移（誰能 accept/counter、accept 時要在同一個 transaction 內 `SELECT ... FOR UPDATE` 鎖 listing 再增加 `reserved_quantity`）仍是 service 的責任，DB 只擋不合法的列。
+  - PRD 的 `market_prices`、`snake_matches` 沒放進來：價格已有 003，貪吃蛇不屬於這個功能。listing 也拿掉了 PRD 的 `draft` 狀態（沒有草稿流程）。
+
+## 202609191608 · 主機套用 migration 006（Local Market schema）
+
+- **想解決的問題**：006 只在本機測過，主機 `agrilink` 資料庫還停在 005。
+- **做了什麼**：先用 `pg_dump -n app` 備份到主機 `/home/ubuntu/agrilink-backup-202609191607.sql`（29 張表），再以 `postgres` 套用 006（單一 transaction，無錯誤），並手動在 `app.schema_migrations` 記入 `006_market_exchange.sql`。
+- **驗證結果**：`market_*` 新表 10 張；`agrilink_app` 對 `market_deals` 有 UPDATE、對 `market_events` 沒有 UPDATE（append-only 權限生效）。
+- **給組員的注意事項**：主機 `schema_migrations` 的 001–003 記成沒有 `.sql` 的名字，004 起才有；直接跑 `npm run db:migrate` 會把 001–003 當成未套用而重跑並失敗，之前請先把那三筆改成完整檔名。目前仍只有 schema，沒有 API/前端。
