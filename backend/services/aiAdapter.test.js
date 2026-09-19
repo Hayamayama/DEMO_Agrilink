@@ -4,7 +4,7 @@ import { askAI, cacheKey, trimHistory, contextLines, _reset } from './aiAdapter.
 import { normalizeAnswer, normalizeRequest, sanitizeSources, LIMITS } from './aiSchemas.js';
 import { fallbackAnswer, intentFor } from './aiFallbacks.js';
 import { validateImage, validateAudio } from './mediaService.js';
-import { buildUserParts, buildRequestBody, extractText, parseJson, AiError } from './geminiProvider.js';
+import { buildUserParts, buildRequestBody, extractText, parseJson, anySignal, AiError } from './geminiProvider.js';
 
 const goodModelJson = {
   headline: 'Check water and lower leaves first',
@@ -302,4 +302,28 @@ test('every fallback checklist is renderable and cautious', () => {
     assert.equal(answer.confidence, 'low');
     assert.equal(normalizeAnswer(answer).ok, true, `${presetId} fallback must pass its own schema`);
   }
+});
+
+// --- Node 18 compatibility (server runtime) ---
+
+test('anySignal aborts when either source aborts, without AbortSignal.any', () => {
+  const a = new AbortController();
+  const b = new AbortController();
+  const both = anySignal([a.signal, b.signal]);
+  assert.equal(both.aborted, false);
+  b.abort();
+  assert.equal(both.aborted, true);
+  assert.equal(anySignal([AbortSignal.abort(), new AbortController().signal]).aborted, true);
+});
+
+test('a cancelled client signal reaches the provider as CANCELLED', async () => {
+  const client = new AbortController();
+  const fetchImpl = (_url, opts) => new Promise((_res, rej) => {
+    opts.signal.addEventListener('abort', () => rej(new Error('aborted')));
+    client.abort();
+  });
+  await assert.rejects(
+    () => askAI({ requestId: 'req-abort-001', text: 'why yellow', signal: client.signal, fetchImpl }),
+    (e) => e.code === 'CANCELLED',
+  );
 });

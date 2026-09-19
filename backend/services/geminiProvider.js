@@ -88,11 +88,22 @@ function providerError(status, body) {
   return new AiError('AI_UNAVAILABLE', 'AI service rejected the request.');
 }
 
+// AbortSignal.any needs Node 20.3+; the server runs Node 18, so combine by hand.
+export function anySignal(signals) {
+  const controller = new AbortController();
+  const abort = (s) => () => controller.abort(s.reason);
+  for (const s of signals) {
+    if (s.aborted) { controller.abort(s.reason); break; }
+    s.addEventListener('abort', abort(s), { once: true });
+  }
+  return controller.signal;
+}
+
 async function call(path, body, { signal, fetchImpl = fetch, timeoutMs }) {
   const { apiKey } = config();
   if (!apiKey) throw new AiError('AI_UNAVAILABLE', 'AI is not configured.');
   const timeout = AbortSignal.timeout(timeoutMs);
-  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const combined = signal ? anySignal([signal, timeout]) : timeout;
   let res;
   try {
     res = await fetchImpl(`${API_ROOT}/${path}`, {

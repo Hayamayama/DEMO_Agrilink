@@ -279,3 +279,9 @@
 - **做了什麼**：commit `1695e72`（Ask AI 全部檔案，確認 `.env` 未進版控、diff 內無 API key），rebase 到最新 main（含 Kris 的 CEDA 同步，`package.json` 無衝突），合併後 60 項測試全過，已 push。
 - **發現的問題**：本機 SSH key 沒有主機權限（`ubuntu@`、`root@` 都 Permission denied），無法代為部署。
 - **給組員的注意事項**：部署前主機 `backend/.env` 必須有 `GEMINI_API_KEY` 且 `GEMINI_MODEL=gemini-3.5-flash-lite`，再跑 `bash ~/dogbark/deploy/setup.sh`。
+
+## 202609191404 · 修正 Node 18 相容性並部署 Ask AI
+
+- **發現的問題**：主機 Node 是 v18.19，`AbortSignal.any`（Node 20.3+）不存在，Gemini 呼叫會丟 TypeError、每題都靜默退回 BASIC TIPS；本機 Node 25 完全看不出來。
+- **做了什麼改動**：`geminiProvider.js` 改用自寫的 `anySignal`；新增 2 項測試（共 62 項）。
+- **給組員的注意事項**：主機 Node 18 與 `package.json` 的 `engines >=20` 不符，新程式碼請避免 Node 20+ 才有的 API（或先升級主機 Node）。`backend/test/t9.test.js` 在 Node 18 無法直接 import 前端 ESM，主機上請不要跑 `npm test`。
