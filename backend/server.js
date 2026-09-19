@@ -52,11 +52,16 @@ console.log(pool ? 'prices: using Postgres' : 'prices: using in-memory seed data
 const prices = createPriceService(pool ? pgRepo(pool) : memoryRepo());
 app.use('/api/prices', pricesRouter(prices));
 app.use('/api/weather', weather);
-app.use('/api/ai', aiRouter());
-app.use('/api/tts', ttsRouter());
+// Identity is created first so the Gemini-backed routes can require a signed-in member. It stays
+// null without a database (local offline demo) or when its secret is missing (see below).
+let auth = null;
+let authError = null;
+if (pool) { try { auth = createAuthService(pool); } catch (err) { authError = err; } }
+app.use('/api/ai', aiRouter({ auth }));
+app.use('/api/tts', ttsRouter({ auth }));
 if (pool) {
   try {
-    const auth = createAuthService(pool);
+    if (authError) throw authError;
     app.use('/api/auth', authRouter({ auth, pool }));
     app.use('/api/admin', adminRouter({ auth, pool }));
     app.use('/admin', express.static(path.join(here, 'admin')));
