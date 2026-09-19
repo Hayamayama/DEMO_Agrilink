@@ -301,3 +301,22 @@
 ### 組員注意事項
 
 - 所有使用 `MarketForm` 的表單（出價、還價、刊登、排定取貨）都套用新的錯誤顯示位置。
+
+---
+
+## 202609191708 GMT+8 — Local Market：把「我發出的 offer」放到首頁
+
+### 發現／問題
+
+- 實機發出 offer 後進 My Offers 看不到。該頁固定開啟 incoming（別人給我、等我回覆的），自己發出的要按左軟鍵「Sent」才看得到；nginx log 顯示手機從未請求 `role=outgoing`。
+- My Deals 空白屬正常：offer 需被對方接受並雙方確認才會成立 deal；seed 示範帳號不會自動回覆。
+
+### 做了什麼改動
+
+- Local Market 首頁改為 `5 Offers to Answer`（保留 n new 徽章）、`6 Offers I Sent`、`7 My Deals`。
+- 空清單提示改為說明原因（沒有待回覆／尚未發出 offer／offer 被接受後才會出現 deal）。
+- 本機 240×320 實測三個入口。
+
+### 組員注意事項
+
+- My Deals 的數字快捷鍵由 6 改為 7。

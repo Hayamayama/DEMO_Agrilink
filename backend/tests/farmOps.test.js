@@ -12,19 +12,55 @@ async function setup() {
   const t = await startForum();
   await t.db.exec(migration);
   await seedFarmOps(t.pool, { demoDate: '2026-09-19' });
-  const users = (await t.pool.query(`SELECT s.demo_key,p.user_id id FROM app.forum_user_state s JOIN app.user_profiles p ON p.user_id=s.user_id WHERE s.demo_key IN ('10000001','10000002','10000003','10000004') ORDER BY s.demo_key`)).rows;
-  return { ...t, owner: users[0], manager: users[1], worker: users[2], viewer: users[3], ops: createFarmOpsService(t.pool) };
+  const users = (await t.pool.query(`SELECT s.demo_key,p.user_id id FROM app.forum_user_state s JOIN app.user_profiles p ON p.user_id=s.user_id WHERE s.demo_key IN ('10000001','10000002','10000003','10000004','10000005') ORDER BY s.demo_key`)).rows;
+  const byKey = new Map(users.map((u) => [u.demo_key, u]));
+  return { ...t, owner: byKey.get('10000001'), manager: byKey.get('10000005'), worker: byKey.get('10000002'), viewer: byKey.get('10000004'), ops: createFarmOpsService(t.pool) };
 }
 
 test('Today groups overdue, active, blocked and completed work with a real summary', async () => {
   const t = await setup();
   try {
     const out = await t.ops.overview(t.owner, FARM_DEMO_ID, '2026-09-19');
-    assert.equal(out.summary.total, 4);
+    assert.equal(out.summary.total, 5);
     assert.equal(out.summary.completed, 1);
-    assert.equal(out.sections.overdue[0].title, 'Inspect irrigation pump');
-    assert.equal(out.sections.blocked[0].title, 'Clear drainage channel');
-    assert.equal(out.sections.inProgress[0].title, 'Irrigate north plot');
+    assert.equal(out.sections.overdue[0].title, 'Inspect pump');
+    assert.equal(out.sections.blocked[0].title, 'Spray vegetable plot');
+    assert.equal(out.sections.inProgress[0].title, 'Irrigate north section');
+  } finally { await t.close(); }
+});
+
+test('demo seed is complete and idempotent', async () => {
+  const t = await setup();
+  try {
+    const second = await seedFarmOps(t.pool, { demoDate: '2026-09-19' });
+    assert.deepEqual({ members: second.members, fields: second.fields, cropCycles: second.cropCycles, tasks: second.tasks, records: second.records },
+      { members: 5, fields: 3, cropCycles: 3, tasks: 13, records: 6 });
+    const counts = (await t.pool.query(`SELECT
+      (SELECT count(*)::int FROM app.farm_members WHERE farm_id=$1 AND status='active') members,
+      (SELECT count(*)::int FROM app.farm_fields WHERE farm_id=$1) fields,
+      (SELECT count(*)::int FROM app.crop_cycles WHERE farm_id=$1) cycles,
+      (SELECT count(*)::int FROM app.farm_tasks WHERE farm_id=$1) tasks,
+      (SELECT count(*)::int FROM app.farm_records WHERE farm_id=$1) records,
+      (SELECT count(*)::int FROM app.farm_task_templates WHERE farm_id=$1) templates,
+      (SELECT count(*)::int FROM app.farm_notifications WHERE farm_id=$1) notifications,
+      (SELECT count(*)::int FROM app.farm_weather_snapshots WHERE farm_id=$1) weather`, [FARM_DEMO_ID])).rows[0];
+    assert.deepEqual(counts, { members: 5, fields: 3, cycles: 3, tasks: 13, records: 6, templates: 3, notifications: 3, weather: 1 });
+    const waiting = (await t.pool.query(`SELECT verification_required,status FROM app.farm_tasks WHERE title='Drainage repair review'`)).rows[0];
+    assert.equal(waiting.verification_required, true);
+    assert.equal(waiting.status, 'completed');
+  } finally { await t.close(); }
+});
+
+test('existing Test_Admin is added to the demo farm as an active owner', async () => {
+  const t = await setup();
+  try {
+    const phone = `98${String(Date.now()).slice(-8)}`;
+    const { user } = await t.auth.signup({ phone, pin: '246810', displayName: 'Test_Admin', village: 'Admin Village', regionId: (await t.pool.query(`SELECT id FROM app.regions WHERE code='IN-BR'`)).rows[0].id });
+    await t.pool.query(`UPDATE app.users SET role='admin' WHERE id=$1`, [user.id]);
+    const seeded = await seedFarmOps(t.pool, { demoDate: '2026-09-19' });
+    const membership = (await t.pool.query(`SELECT role,status FROM app.farm_members WHERE farm_id=$1 AND user_id=$2`, [FARM_DEMO_ID,user.id])).rows[0];
+    assert.equal(seeded.testAdminOwner, true);
+    assert.deepEqual(membership, { role: 'owner', status: 'active' });
   } finally { await t.close(); }
 });
 
@@ -42,7 +78,7 @@ test('task creation is idempotent and manager-only', async () => {
 test('worker lifecycle is server-authoritative and completion creates a farm record', async () => {
   const t = await setup();
   try {
-    const task = (await t.pool.query(`SELECT id FROM app.farm_tasks WHERE title='Inspect irrigation pump'`)).rows[0];
+    const task = (await t.pool.query(`SELECT id FROM app.farm_tasks WHERE title='Check tomato supports'`)).rows[0];
     await t.ops.transition(t.worker, task.id, 'accepted');
     await t.ops.transition(t.worker, task.id, 'in_progress');
     await t.ops.transition(t.worker, task.id, 'completed', { resultCode: 'normal', result: { pump: 'ok' } });
