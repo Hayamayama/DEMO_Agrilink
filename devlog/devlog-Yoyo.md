@@ -285,3 +285,9 @@
 - **發現的問題**：主機 Node 是 v18.19，`AbortSignal.any`（Node 20.3+）不存在，Gemini 呼叫會丟 TypeError、每題都靜默退回 BASIC TIPS；本機 Node 25 完全看不出來。
 - **做了什麼改動**：`geminiProvider.js` 改用自寫的 `anySignal`；新增 2 項測試（共 62 項）。
 - **給組員的注意事項**：主機 Node 18 與 `package.json` 的 `engines >=20` 不符，新程式碼請避免 Node 20+ 才有的 API（或先升級主機 Node）。`backend/test/t9.test.js` 在 Node 18 無法直接 import 前端 ESM，主機上請不要跑 `npm test`。
+
+## 202609191405 · Ask AI 已部署到主機（尚缺 GEMINI_API_KEY）
+
+- **做了什麼**：用主辦給的 key 以 `ubuntu` 登入，主機 `backend/.env` 補上非機密的 AI 設定（模型 gemini-3.5-flash-lite、逾時、限流），執行 `deploy/setup.sh`。服務 active，日誌 `prices: using Postgres`；線上首頁、`/api/ai/capabilities`、`ask-ai.css` 皆 200。
+- **目前狀態**：日誌顯示 `ai: no GEMINI_API_KEY`，線上 Ask AI 暫時只回 BASIC TIPS 固定清單。**主機 `.env` 還沒有 `GEMINI_API_KEY`**，加入後執行 `sudo systemctl restart agrilink` 即生效。
+- **給組員的注意事項**：`ubuntu` 可登入、`root` 不行；主機 Node 為 v18.19（`engines` 要求 >=20，npm 有警告但可運作）。
