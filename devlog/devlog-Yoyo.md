@@ -308,3 +308,8 @@
 - **發現的問題**：預設每 IP 每分鐘 6 次、每日 30 次，若 Cloud Phone/評審共用同一個出口 IP，整天只有 30 次可用，demo 容易被 429 擋下。
 - **做了什麼改動**：`AI_RATE_LIMIT_PER_MINUTE=15`、`AI_RATE_LIMIT_PER_DAY=300`（主機 `.env`、`.env.example`、`routes/ai.js` 預設值）並重新部署。成本仍受 10 分鐘快取與 500 token 輸出上限約束。
 - **給組員的注意事項**：限流存在記憶體，服務重啟即歸零；快取命中的請求仍計入額度。要再調整只需改主機 `backend/.env` 後 `sudo systemctl restart agrilink`。
+
+## 202609191413 · 加入 demo 葉片照
+
+- **做了什麼改動**：新增 `frontend/img/sample-leaf-1.jpg`（發黃/橘斑葉，432×462，41 KB）、`sample-leaf-2.jpg`（水稻葉褐色病斑，979×653，132 KB），皆為有效 JPEG 且小於 700 KB 上限；重新部署。Ask AI → Options → Photo 的兩個 DEMO SAMPLE 現在可用，答案會標 SAMPLE DATA。
+- **給組員的注意事項**：照片來源/授權請確認可用於公開 demo；若要更換，保持相同檔名並維持 <700 KB。
