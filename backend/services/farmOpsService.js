@@ -1,0 +1,224 @@
+import { AppError, validation } from '../middleware/errors.js';
+
+const ROLES = ['owner', 'manager', 'worker', 'viewer'];
+const MANAGE = new Set(['owner', 'manager']);
+const TYPES = new Set(['inspection','irrigation','fertilizer','spraying','weeding','planting','harvest','machinery','livestock','transport','market','record','custom']);
+const PRIORITIES = new Set(['low', 'normal', 'high', 'urgent']);
+const TRANSITIONS = {
+  draft: ['scheduled'], scheduled: ['assigned', 'cancelled'], assigned: ['accepted', 'delayed', 'cancelled'],
+  accepted: ['in_progress', 'delayed'], in_progress: ['completed', 'blocked', 'delayed'],
+  completed: ['verified', 'in_progress'], blocked: ['assigned', 'scheduled', 'cancelled'],
+  delayed: ['scheduled', 'assigned', 'cancelled'],
+};
+
+const fail = (code, message) => { throw new AppError(code, message); };
+const dateOnly = (v, field = 'date') => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v || '') || Number.isNaN(Date.parse(`${v}T00:00:00Z`))) throw validation(`Invalid ${field}.`, field);
+  return v;
+};
+const text = (v, field, max = 120) => {
+  const out = String(v ?? '').trim();
+  if (!out || out.length > max) throw validation(`${field} is required (maximum ${max} characters).`, field);
+  return out;
+};
+const json = (v) => v == null ? null : v;
+
+export function createFarmOpsService(pool) {
+  async function membership(userId, farmId, roles = ROLES) {
+    const r = await pool.query(`SELECT f.*, m.role FROM app.farms f JOIN app.farm_members m ON m.farm_id=f.id
+      WHERE f.id=$1 AND m.user_id=$2 AND m.status='active' AND f.status='active'`, [farmId, userId]);
+    const row = r.rows[0];
+    if (!row) fail('FARM_ACCESS_DENIED', 'You do not have access to this farm.');
+    if (!roles.includes(row.role)) fail('ROLE_REQUIRED', 'Your farm role cannot perform this action.');
+    return row;
+  }
+
+  const taskSelect = `SELECT t.*, f.name field_name, c.crop_code,
+      COALESCE(json_agg(json_build_object('userId',a.user_id,'name',p.display_name,'role',a.assignment_role,'status',a.status))
+        FILTER (WHERE a.user_id IS NOT NULL), '[]') assignments
+    FROM app.farm_tasks t
+    LEFT JOIN app.farm_fields f ON f.id=t.field_id
+    LEFT JOIN app.crop_cycles c ON c.id=t.crop_cycle_id
+    LEFT JOIN app.farm_task_assignments a ON a.task_id=t.id AND a.status <> 'removed'
+    LEFT JOIN app.user_profiles p ON p.user_id=a.user_id`;
+  const taskGroup = ' GROUP BY t.id, f.name, c.crop_code';
+  const isoDate = (value) => value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  const shapeTask = (t) => ({ ...t, localDate: isoDate(t.local_date), fieldName: t.field_name, cropCode: t.crop_code });
+
+  async function farms(user) {
+    const r = await pool.query(`SELECT f.id,f.name,f.timezone,f.country_code,f.region_code,m.role,
+      (SELECT count(*)::int FROM app.farm_tasks t WHERE t.farm_id=f.id AND t.local_date=(now() AT TIME ZONE f.timezone)::date
+       AND t.status NOT IN ('completed','verified','cancelled','skipped')) open_tasks
+      FROM app.farms f JOIN app.farm_members m ON m.farm_id=f.id
+      WHERE m.user_id=$1 AND m.status='active' AND f.status='active' ORDER BY f.name`, [user.id]);
+    return { items: r.rows };
+  }
+
+  async function overview(user, farmId, requestedDate) {
+    const farm = await membership(user.id, farmId);
+    const day = requestedDate ? dateOnly(requestedDate) : (await pool.query(`SELECT (now() AT TIME ZONE $1)::date::text day`, [farm.timezone])).rows[0].day;
+    const rows = (await pool.query(taskSelect + ` WHERE t.farm_id=$1 AND
+      (t.local_date=$2::date OR (t.local_date < $2::date AND t.status NOT IN ('completed','verified','cancelled','skipped')))` + taskGroup +
+      ` ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, t.start_at NULLS LAST, t.created_at`, [farmId, day])).rows.map(shapeTask);
+    const section = { blocked: [], overdue: [], inProgress: [], due: [], unassigned: [], completed: [] };
+    for (const t of rows) {
+      if (t.status === 'blocked') section.blocked.push(t);
+      else if (t.localDate < day && !['completed','verified'].includes(t.status)) section.overdue.push(t);
+      else if (t.status === 'in_progress') section.inProgress.push(t);
+      else if (['completed','verified'].includes(t.status)) section.completed.push(t);
+      else if (!t.assignments.length) section.unassigned.push(t);
+      else section.due.push(t);
+    }
+    const todays = rows.filter((t) => t.localDate === day);
+    return { farm: { id: farm.id, name: farm.name, timezone: farm.timezone, role: farm.role }, date: day, alerts: [], sections: section,
+      summary: { total: todays.filter((t) => !['cancelled','skipped'].includes(t.status)).length,
+        completed: todays.filter((t) => ['completed','verified'].includes(t.status)).length,
+        inProgress: todays.filter((t) => t.status === 'in_progress').length,
+        blocked: todays.filter((t) => t.status === 'blocked').length,
+        pending: todays.filter((t) => !['completed','verified','cancelled','skipped','in_progress','blocked'].includes(t.status)).length } };
+  }
+
+  async function calendar(user, farmId, q) {
+    await membership(user.id, farmId);
+    const from = dateOnly(q.from, 'from'); const to = dateOnly(q.to, 'to');
+    const params = [farmId, from, to];
+    let mine = '';
+    if (q.mine === 'true') { params.push(user.id); mine = ` AND EXISTS (SELECT 1 FROM app.farm_task_assignments a WHERE a.task_id=t.id AND a.user_id=$4 AND a.status<>'removed')`; }
+    const r = await pool.query(`SELECT t.local_date::text date, count(*)::int total,
+      count(*) FILTER (WHERE t.status IN ('completed','verified'))::int completed,
+      count(*) FILTER (WHERE t.status='blocked')::int blocked,
+      count(*) FILTER (WHERE t.priority='urgent')::int urgent,
+      COALESCE(sum(t.estimated_minutes),0)::int estimated_minutes
+      FROM app.farm_tasks t WHERE t.farm_id=$1 AND t.local_date BETWEEN $2::date AND $3::date ${mine}
+      GROUP BY t.local_date ORDER BY t.local_date`, params);
+    return { days: r.rows };
+  }
+
+  async function listTasks(user, farmId, q = {}) {
+    await membership(user.id, farmId);
+    const params = [farmId]; const where = ['t.farm_id=$1'];
+    if (q.from) { params.push(dateOnly(q.from, 'from')); where.push(`t.local_date >= $${params.length}::date`); }
+    if (q.to) { params.push(dateOnly(q.to, 'to')); where.push(`t.local_date <= $${params.length}::date`); }
+    if (q.mine === 'true') { params.push(user.id); where.push(`EXISTS (SELECT 1 FROM app.farm_task_assignments ma WHERE ma.task_id=t.id AND ma.user_id=$${params.length} AND ma.status<>'removed')`); }
+    if (q.status) { params.push(q.status); where.push(`t.status=$${params.length}`); }
+    const rows = (await pool.query(taskSelect + ` WHERE ${where.join(' AND ')}` + taskGroup + ` ORDER BY t.local_date,t.start_at NULLS LAST`, params)).rows.map(shapeTask);
+    return { items: rows };
+  }
+
+  async function getTask(user, id) {
+    const r = await pool.query(taskSelect + ' WHERE t.id=$1' + taskGroup, [id]);
+    if (!r.rows[0]) fail('NOT_FOUND', 'Task not found.');
+    await membership(user.id, r.rows[0].farm_id);
+    const [checklist, events, result] = await Promise.all([
+      pool.query('SELECT * FROM app.farm_task_checklist_items WHERE task_id=$1 ORDER BY sort_order', [id]),
+      pool.query(`SELECT e.*, p.display_name actor_name FROM app.farm_task_events e LEFT JOIN app.user_profiles p ON p.user_id=e.actor_user_id WHERE task_id=$1 ORDER BY created_at`, [id]),
+      pool.query('SELECT * FROM app.farm_task_results WHERE task_id=$1', [id]),
+    ]);
+    return { item: shapeTask(r.rows[0]), checklist: checklist.rows, events: events.rows, result: result.rows[0] || null };
+  }
+
+  async function createTask(user, farmId, b) {
+    const farm = await membership(user.id, farmId, ['owner', 'manager']);
+    const title = text(b.title, 'title'); const type = b.type || 'custom'; const priority = b.priority || 'normal';
+    if (!TYPES.has(type)) throw validation('Unknown task type.', 'type');
+    if (!PRIORITIES.has(priority)) throw validation('Unknown priority.', 'priority');
+    const localDate = dateOnly(b.localDate, 'localDate');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      if (b.requestId) {
+        const old = (await client.query('SELECT id FROM app.farm_tasks WHERE farm_id=$1 AND created_by=$2 AND request_id=$3', [farmId, user.id, b.requestId])).rows[0];
+        if (old) { await client.query('COMMIT'); return { id: old.id, duplicate: true }; }
+      }
+      const assignees = Array.isArray(b.assignees) ? b.assignees : [];
+      for (const a of assignees) {
+        const ok = await client.query(`SELECT 1 FROM app.farm_members WHERE farm_id=$1 AND user_id=$2 AND status='active'`, [farmId, a.userId]);
+        if (!ok.rows[0]) fail('FARM_ACCESS_DENIED', 'An assignee is not an active farm member.');
+      }
+      const status = assignees.length ? 'assigned' : 'scheduled';
+      const r = await client.query(`INSERT INTO app.farm_tasks
+        (request_id,farm_id,field_id,crop_cycle_id,created_by,title,description,type,priority,status,is_all_day,local_date,start_at,due_at,timezone,estimated_minutes,verification_required,weather_constraints)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`,
+      [b.requestId || null, farmId, b.fieldId || null, b.cropCycleId || null, user.id, title, b.description || null, type, priority, status,
+        Boolean(b.isAllDay), localDate, b.startAt || null, b.dueAt || null, farm.timezone, b.estimatedMinutes || null, Boolean(b.verificationRequired), json(b.weatherConstraints)]);
+      const id = r.rows[0].id;
+      for (const [i, c] of (Array.isArray(b.checklist) ? b.checklist : []).entries()) await client.query(
+        `INSERT INTO app.farm_task_checklist_items(task_id,label,sort_order,is_required) VALUES ($1,$2,$3,$4)`, [id, text(c.label, 'checklist label', 160), i, c.required !== false]);
+      for (const a of assignees) await client.query(`INSERT INTO app.farm_task_assignments(task_id,user_id,assignment_role,assigned_by) VALUES ($1,$2,$3,$4)`, [id, a.userId, a.role === 'helper' ? 'helper' : 'primary', user.id]);
+      await client.query(`INSERT INTO app.farm_task_events(task_id,actor_user_id,event_type,to_status,data) VALUES ($1,$2,'created',$3,$4)`, [id, user.id, status, { requestId: b.requestId || null }]);
+      await client.query('COMMIT'); return { id, duplicate: false };
+    } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+  }
+
+  async function transition(user, id, to, body = {}) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const task = (await client.query('SELECT * FROM app.farm_tasks WHERE id=$1 FOR UPDATE', [id])).rows[0];
+      if (!task) fail('NOT_FOUND', 'Task not found.');
+      const farm = await membership(user.id, task.farm_id);
+      const manager = MANAGE.has(farm.role);
+      const assigned = (await client.query(`SELECT 1 FROM app.farm_task_assignments WHERE task_id=$1 AND user_id=$2 AND status<>'removed'`, [id, user.id])).rows[0];
+      if (!manager && !assigned) fail('ROLE_REQUIRED', 'This task is not assigned to you.');
+      const allowed = TRANSITIONS[task.status] || [];
+      if (!allowed.includes(to)) fail('INVALID_STATUS_TRANSITION', `Cannot change ${task.status} to ${to}.`);
+      if (['verified','cancelled','assigned','scheduled'].includes(to) && !manager) fail('ROLE_REQUIRED', 'A manager is required for this action.');
+      if (to === 'in_progress') {
+        const blocked = await client.query(`SELECT d.depends_on_task_id FROM app.farm_task_dependencies d JOIN app.farm_tasks t ON t.id=d.depends_on_task_id WHERE d.task_id=$1 AND t.status NOT IN ('completed','verified') LIMIT 1`, [id]);
+        if (blocked.rows[0]) fail('TASK_DEPENDENCY_BLOCKED', 'Finish the blocking task before starting this task.');
+      }
+      if (to === 'completed') {
+        const incomplete = await client.query(`SELECT 1 FROM app.farm_task_checklist_items WHERE task_id=$1 AND is_required AND completed_at IS NULL LIMIT 1`, [id]);
+        if (incomplete.rows[0]) fail('CHECKLIST_INCOMPLETE', 'Complete all required checklist items first.');
+        await client.query(`INSERT INTO app.farm_task_results(task_id,completed_by,result_code,result,note,actual_start_at,actual_finish_at,labor_minutes,weather_snapshot,problem_flag)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(task_id) DO NOTHING`, [id, user.id, body.resultCode || 'done', body.result || {}, body.note || null, body.actualStartAt || null, body.actualFinishAt || new Date(), body.laborMinutes || null, body.weatherSnapshot || null, Boolean(body.problemFlag)]);
+        await client.query(`INSERT INTO app.farm_records(farm_id,field_id,crop_cycle_id,task_id,actor_user_id,record_type,occurred_at,local_date,data)
+          VALUES ($1,$2,$3,$4,$5,$6,now(),$7,$8)`, [task.farm_id, task.field_id, task.crop_cycle_id, id, user.id, task.type, task.local_date, { resultCode: body.resultCode || 'done', result: body.result || {}, note: body.note || null }]);
+      }
+      const reasonColumn = to === 'blocked' ? 'blocked_reason' : to === 'delayed' ? 'delayed_reason' : to === 'cancelled' ? 'cancelled_reason' : null;
+      const sets = [`status=$2`, 'version=version+1', 'updated_at=now()']; const params = [id, to];
+      if (to === 'completed') sets.push('completed_at=now()');
+      if (to === 'verified') { sets.push('verified_at=now()'); params.push(user.id); sets.push(`verified_by=$${params.length}`); }
+      if (reasonColumn) { params.push(text(body.reason, 'reason', 300)); sets.push(`${reasonColumn}=$${params.length}`); }
+      await client.query(`UPDATE app.farm_tasks SET ${sets.join(',')} WHERE id=$1`, params);
+      await client.query(`INSERT INTO app.farm_task_events(task_id,actor_user_id,event_type,from_status,to_status,data) VALUES ($1,$2,'status_changed',$3,$4,$5)`, [id, user.id, task.status, to, body]);
+      if (to === 'accepted') await client.query(`UPDATE app.farm_task_assignments SET status='accepted',responded_at=now() WHERE task_id=$1 AND user_id=$2`, [id, user.id]);
+      if (to === 'completed') await client.query(`UPDATE app.farm_task_assignments SET status='completed',responded_at=now() WHERE task_id=$1 AND user_id=$2`, [id, user.id]);
+      await client.query('COMMIT'); return { id, status: to };
+    } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+  }
+
+  async function checklist(user, taskId, itemId, completed) {
+    const task = (await pool.query('SELECT farm_id FROM app.farm_tasks WHERE id=$1', [taskId])).rows[0];
+    if (!task) fail('NOT_FOUND', 'Task not found.');
+    await membership(user.id, task.farm_id);
+    const r = await pool.query(`UPDATE app.farm_task_checklist_items SET completed_at=CASE WHEN $3 THEN now() ELSE NULL END,completed_by=CASE WHEN $3 THEN $4::uuid ELSE NULL END WHERE id=$1 AND task_id=$2 RETURNING *`, [itemId, taskId, Boolean(completed), user.id]);
+    if (!r.rows[0]) fail('NOT_FOUND', 'Checklist item not found.');
+    return { item: r.rows[0] };
+  }
+
+  async function fields(user, farmId) {
+    await membership(user.id, farmId);
+    const r = await pool.query(`SELECT f.*, COALESCE(json_agg(json_build_object('id',c.id,'cropCode',c.crop_code,'stage',c.stage,'plantingDate',c.planting_date,'targetHarvestDate',c.target_harvest_date,'status',c.status)) FILTER (WHERE c.id IS NOT NULL),'[]') cycles
+      FROM app.farm_fields f LEFT JOIN app.crop_cycles c ON c.field_id=f.id AND c.status IN ('planned','active') WHERE f.farm_id=$1 GROUP BY f.id ORDER BY f.name`, [farmId]);
+    return { items: r.rows };
+  }
+  async function members(user, farmId) {
+    await membership(user.id, farmId);
+    const r = await pool.query(`SELECT m.user_id,m.role,m.status,p.display_name,p.village,
+      count(a.task_id) FILTER (WHERE t.status NOT IN ('completed','verified','cancelled','skipped'))::int open_tasks,
+      COALESCE(sum(t.estimated_minutes) FILTER (WHERE t.status NOT IN ('completed','verified','cancelled','skipped')),0)::int workload_minutes
+      FROM app.farm_members m JOIN app.user_profiles p ON p.user_id=m.user_id LEFT JOIN app.farm_task_assignments a ON a.user_id=m.user_id AND a.status<>'removed' LEFT JOIN app.farm_tasks t ON t.id=a.task_id AND t.farm_id=m.farm_id
+      WHERE m.farm_id=$1 AND m.status='active' GROUP BY m.user_id,m.role,m.status,p.display_name,p.village ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END,p.display_name`, [farmId]);
+    return { items: r.rows };
+  }
+  async function records(user, farmId, q = {}) {
+    await membership(user.id, farmId);
+    const params = [farmId]; const where = ['r.farm_id=$1'];
+    if (q.from) { params.push(dateOnly(q.from, 'from')); where.push(`r.local_date >= $${params.length}::date`); }
+    if (q.to) { params.push(dateOnly(q.to, 'to')); where.push(`r.local_date <= $${params.length}::date`); }
+    const r = await pool.query(`SELECT r.*,f.name field_name,p.display_name actor_name,t.title task_title FROM app.farm_records r LEFT JOIN app.farm_fields f ON f.id=r.field_id LEFT JOIN app.user_profiles p ON p.user_id=r.actor_user_id LEFT JOIN app.farm_tasks t ON t.id=r.task_id WHERE ${where.join(' AND ')} ORDER BY r.occurred_at DESC LIMIT 100`, params);
+    return { items: r.rows };
+  }
+  return { farms, membership, overview, calendar, listTasks, getTask, createTask, transition, checklist, fields, members, records };
+}

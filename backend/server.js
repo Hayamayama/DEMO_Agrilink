@@ -17,6 +17,8 @@ import { createMarketRouter } from './routes/market.js';
 import { ensureForumReference } from './db/forumReference.js';
 import { seedDemo } from './db/forumSeed.js';
 import { forumErrorHandler } from './middleware/errors.js';
+import { createFarmOpsRouter } from './routes/farmOps.js';
+import { seedFarmOps } from './db/farmOpsSeed.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -80,6 +82,15 @@ if (pool) {
     } catch (err) {
       console.warn(`market: disabled (${err.message}) - apply migration 006 with npm run db:migrate`);
       app.use('/api/market', (_req, res) => res.status(503).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Local Market is not available right now.', field: null, retryable: true } }));
+    }
+    try {
+      await pool.query('SELECT 1 FROM app.farms LIMIT 0');
+      if (process.env.SEED_DEMO_DATA === 'true') await seedFarmOps(pool);
+      app.use('/api/farms', createFarmOpsRouter({ pool, auth }).router);
+      console.log("farm ops: Today's Farm enabled");
+    } catch (err) {
+      console.warn(`farm ops: disabled (${err.message}) - apply migration 007 with npm run db:migrate`);
+      app.use('/api/farms', forumUnavailable);
     }
   } catch (err) {
     // Prices and offline AI are still useful on a local demo, but identity must

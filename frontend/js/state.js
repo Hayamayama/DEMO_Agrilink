@@ -34,3 +34,11 @@ export const user = {
 // Identity is server-authoritative. `profile` is only the currently rendered
 // copy; the HTTP-only session cookie is the credential and never touches JS.
 export const identity = { profile: null, options: null };
+
+export const farmOps = {
+  activeFarmId: null,
+  activeFarm: null,
+  activeDate: new URLSearchParams(location.search).get('demoDate') || new Date().toISOString().slice(0, 10),
+  calendarView: 'agenda',
+  focusedTaskId: null,
+};

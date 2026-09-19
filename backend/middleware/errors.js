@@ -19,6 +19,11 @@ const STATUS = {
   UPLOAD_TOO_LARGE: 413,
   UNSUPPORTED_MEDIA: 415,
   INTERNAL_ERROR: 500,
+  FARM_ACCESS_DENIED: 403,
+  ROLE_REQUIRED: 403,
+  INVALID_STATUS_TRANSITION: 409,
+  TASK_DEPENDENCY_BLOCKED: 409,
+  CHECKLIST_INCOMPLETE: 409,
 };
 
 export class AppError extends Error {
@@ -40,7 +45,7 @@ export const asyncHandler = (fn) => (req, res, next) => {
 
 // Only claims errors for our own routes; other routers keep their own handling.
 export function forumErrorHandler(err, req, res, next) {
-  if (!/^\/api\/(forum|market)(\/|$)/.test(req.path)) return next(err);
+  if (!/^\/api\/(forum|market|farms)(\/|$)/.test(req.path)) return next(err);
   if (res.headersSent) return next(err);
   let e = err;
   if (!(e instanceof AppError)) {

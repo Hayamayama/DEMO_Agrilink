@@ -3,7 +3,7 @@ const ITEMS = [
   { label: 'Sell / Buy', to: 'MarketHome' },
   { label: 'Farmer Circle', to: 'FarmerCircleHome' },
   { label: 'Ask AI', to: 'AskAIHome' },
-  { label: 'Daily Tasks', to: 'ComingSoon' },
+  { label: "Today's Farm", to: 'FarmGate' },
   { label: 'Weather', to: 'Weather' },
   { label: 'Settings', to: 'Settings' },
 ];

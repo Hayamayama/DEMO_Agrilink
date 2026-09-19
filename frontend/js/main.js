@@ -26,6 +26,7 @@ import { MarketForm, MarketNumber, MarketText } from './market/marketForm.js';
 import { MarketHome, MarketFeed, MarketFilter, MarketDetail } from './market/marketScreens.js';
 import { MarketOffers, MarketOffer, MarketDeals, MarketDeal, MarketReason } from './market/marketTrades.js';
 import { CreatePostTitle, CreatePostBody, CreatePostTagsLoader, CreatePostPreview } from './screens/createPost.js';
+import { farmOpsScreens } from './screens/farmOps.js';
 
 const farmerCircle = {
   FarmerCircleHome: farmerCircleHome, PostDetail: postDetail, ForumOptions: forumOptions, UserProfile: userProfile,
@@ -40,6 +41,7 @@ const screens = {
   AuthWelcome, AuthPhone, AuthPin, ProfileName, ProfileVillage, ProfileRegion, AuthResult, Settings, ProfileSummary, LanguageSettings, CropSettings,
   ...farmerCircle,
   MarketHome, MarketFeed, MarketFilter, MarketDetail, MarketForm, MarketNumber, MarketText, MarketOffers, MarketOffer, MarketDeals, MarketDeal, MarketReason,
+  ...farmOpsScreens,
 };
 const $ = (id) => document.getElementById(id);
 
