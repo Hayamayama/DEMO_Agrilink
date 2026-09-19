@@ -123,7 +123,7 @@ export async function seedFarmOps(pool, { demoDate = process.env.DEMO_DATE || '2
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,crop_code=EXCLUDED.crop_code,
       type=EXCLUDED.type,title_template=EXCLUDED.title_template,priority=EXCLUDED.priority,
       default_duration_minutes=EXCLUDED.default_duration_minutes,offset_days=EXCLUDED.offset_days,checklist=EXCLUDED.checklist,is_active=true,updated_at=now()`,
-    [id(`template-${key}`),farmId,name,crop,type,title,priority,duration,offset,items]);
+    [id(`template-${key}`),farmId,name,crop,type,title,priority,duration,offset,JSON.stringify(items)]);
     const weatherPayload={provider:'open-meteo',source:'demo',stale:false,timezone:'Asia/Kolkata',current:{temperatureC:31.2,rainProbability:70,windSpeedKph:18},daily:[{date:demoDate,rainProbabilityMax:70,windSpeedMaxKph:18,weatherCode:61}],summary:'Rain probability 70% after 15:00',demo:true};
     await client.query(`INSERT INTO app.farm_weather_snapshots(id,farm_id,provider,payload,fetched_at,expires_at)
       VALUES ($1,$2,'open-meteo',$3,$4,$5) ON CONFLICT(id) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=EXCLUDED.fetched_at,expires_at=EXCLUDED.expires_at`,
