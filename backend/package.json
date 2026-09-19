@@ -10,6 +10,8 @@
     "start": "node server.js",
     "test": "node --test",
     "db:migrate": "node db/migrate.js",
+    "forum:seed": "node db/forumSeed.js",
+    "forum:dev": "node dev/forumDevServer.js",
     "admin:create": "node db/createAdmin.js",
     "ceda:catalog": "node db/syncCeda.js catalog",
     "ceda:geographies": "node db/syncCeda.js geographies",
@@ -24,5 +26,8 @@
     "express-rate-limit": "^8.7.0",
     "multer": "^2.4.0",
     "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8"
   }
 }

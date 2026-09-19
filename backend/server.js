@@ -11,6 +11,10 @@ import { createPriceService } from './services/priceService.js';
 import { createAuthService } from './services/authService.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
+import { createForumRouter } from './routes/forum.js';
+import { ensureForumReference } from './db/forumReference.js';
+import { seedDemo } from './db/forumSeed.js';
+import { forumErrorHandler } from './middleware/errors.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -38,6 +42,7 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '32kb' })); // media goes through multipart, not JSON
 
 // Postgres when DATABASE_URL is set, otherwise the in-memory demo data (flagged sample).
+const forumUnavailable = (_req, res) => res.status(503).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Farmer Circle is not available right now.', field: null, retryable: true } });
 const pool = createPool();
 console.log(pool ? 'prices: using Postgres' : 'prices: using in-memory seed data');
 const prices = createPriceService(pool ? pgRepo(pool) : memoryRepo());
@@ -51,15 +56,31 @@ if (pool) {
     app.use('/api/admin', adminRouter({ auth, pool }));
     app.use('/admin', express.static(path.join(here, 'admin')));
     console.log('auth: PostgreSQL sessions enabled');
+    // Farmer Circle needs migration 005 (npm run db:migrate) and the auth service above.
+    try {
+      await ensureForumReference(pool);
+      if (process.env.SEED_DEMO_DATA === 'true') {
+        const seeded = await seedDemo(pool, { auth });
+        console.log(`forum: demo data ready (${seeded.posts} posts)`);
+      }
+      app.use('/api/forum', createForumRouter({ pool, auth }).router);
+      console.log('forum: Farmer Circle enabled');
+    } catch (err) {
+      console.warn(`forum: disabled (${err.message}) - apply migration 005 with npm run db:migrate`);
+      app.use('/api/forum', forumUnavailable);
+    }
   } catch (err) {
     // Prices and offline AI are still useful on a local demo, but identity must
     // never silently use an insecure fallback when its secret is absent.
     console.warn(`auth: disabled (${err.message})`);
+    app.use('/api/forum', forumUnavailable);
     app.use(['/api/auth', '/api/admin'], (_req, res) => res.status(503).json({ ok: false, error: { code: 'AUTH_UNAVAILABLE', message: 'Sign-in is not configured on this server.' } }));
   }
 }
+if (!pool) app.use('/api/forum', forumUnavailable);
 console.log(process.env.GEMINI_API_KEY ? 'ai: gemini configured' : 'ai: no GEMINI_API_KEY - Ask AI serves offline fallbacks');
 app.use(express.static(path.join(here, '..', 'frontend')));
+app.use(forumErrorHandler);
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ ok: false, error: { code: 'INTERNAL', message: 'Something went wrong. Please try again.' } });

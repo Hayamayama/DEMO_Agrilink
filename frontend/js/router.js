@@ -52,6 +52,9 @@ export function createRouter({ screens, els, ctxExtra = {} }) {
     },
     replace(name, params) { hideCurrent(); stack[stack.length - 1] = { name, params }; show(); },
     pop() { history.back(); }, // popstate handler below does the work; at root this closes the page
+    // Unwinds to the screen that was `depth` deep (router.depth captured earlier).
+    // The popstate handler re-renders it; if already there, just re-render.
+    popTo(depth) { const n = stack.length - depth; if (n > 0) history.go(-n); else show(); },
     reset() { if (stack.length > 1) history.go(-(stack.length - 1)); },
     start(name) {
       history.replaceState({ d: 0 }, '');

@@ -13,12 +13,28 @@ import { AskAIMedia, AskAIPhoto, AskAIVoice, AskAIHistory } from './screens/askA
 import { AuthWelcome, AuthPhone, AuthPin, ProfileName, ProfileVillage, ProfileRegion, AuthResult, Settings, ProfileSummary, LanguageSettings, CropSettings } from './screens/identity.js';
 import { getJSON } from './api.js';
 import { identity } from './state.js';
+import farmerCircleHome from './screens/farmerCircleHome.js';
+import postDetail from './screens/postDetail.js';
+import forumOptions from './screens/forumOptions.js';
+import forumGate from './screens/forumGate.js';
+import userProfile from './screens/userProfile.js';
+import createReply from './screens/createReply.js';
+import { pickerScreens } from './screens/forumPicker.js';
+import { MyPosts, SavedPosts } from './screens/forumCollections.js';
+import { CreatePostTitle, CreatePostBody, CreatePostTagsLoader, CreatePostPreview } from './screens/createPost.js';
+
+const farmerCircle = {
+  FarmerCircleHome: farmerCircleHome, PostDetail: postDetail, ForumOptions: forumOptions, UserProfile: userProfile,
+  AuthGate: forumGate, CreateReply: createReply, MyPosts, SavedPosts, ...pickerScreens,
+  CreatePostTitle, CreatePostBody, CreatePostTagsLoader, CreatePostPreview,
+};
 
 const screens = {
   MainMenu: mainMenu, Weather: weather, MarketPrices: marketPrices, PriceDetail: priceDetail, ComingSoon: comingSoon,
   AskAIHome: askAIHome, AskAIInput: askAIInput, AskAIThinking: askAIThinking, AskAIAnswer: askAIAnswer,
   AskAISources, AskAIMedia, AskAIPhoto, AskAIVoice, AskAIHistory,
   AuthWelcome, AuthPhone, AuthPin, ProfileName, ProfileVillage, ProfileRegion, AuthResult, Settings, ProfileSummary, LanguageSettings, CropSettings,
+  ...farmerCircle,
 };
 const $ = (id) => document.getElementById(id);
 

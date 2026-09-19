@@ -346,3 +346,18 @@
   - 新增 Cloud Phone 專用的功能偵測：`navigator.hasFeature('AudioCapture')`、`('ImageUpload')`（非 Cloud Phone 環境無此函式，行為不變）。回報不支援時 Voice/Photo 會變灰並顯示「Not available on this device」。本機用假的 hasFeature 驗證。
   - 等待權限提示的逾時由 10 秒放寬為 30 秒（feature phone 找到並確認提示需要時間）；提示文字改為「Allow the microphone when the phone asks.」。
 - **給組員的注意事項**：實機請用 `?debug=1` 開啟，逾時或失敗時畫面會附上錯誤名稱，請記錄下來作為「實機實際能力」。若實機一直無法授權，demo 請改走文字/照片。
+
+## 202609191544 · Farmer Circle（Reddit 式農業論壇）改用 PostgreSQL
+
+- **想解決的問題**：主選單的 Farmer Circle 還是 Coming Soon；要做可瀏覽、需登入才能互動的論壇（無 AI）。最初用 SQLite 做完，但主機（Ubuntu）已有 PostgreSQL `app` schema 與組員的手機號碼 + PIN 身分系統，所以改成直接用它們。
+- **先看了主機 schema**：`app.users / user_profiles / regions / auth_sessions ...`（uuid 主鍵、migrator 角色擁有表、app 角色只有 DML）；主機 Node 是 18。
+- **做了什麼改動**：
+  - `db/migrations/005_forum.sql`：`app.forum_communities / tags / posts / post_tags / replies / votes / saved_posts / reports / request_ids / mod_actions / user_state`，作者指向 `app.users`、地區指向 `app.regions`；`users.role` 放寬為 member/moderator/admin。分數不存欄位，由 votes 加總。
+  - 後端：`routes/forum.js`（沿用組員的 `/api/auth` 登入 cookie）、`services/forumService.js`（全部 async pg、交易、冪等 requestId、伺服器端權限）、`db/forumSeed.js`（示範會員經 `auth.signup` 建立；票數由 34 個無法登入的 voter 列產生）。
+  - 前端：Vanilla JS 的 feed / 貼文詳情 / 發文精靈 / 回覆 / 篩選 / 我的貼文 / 收藏；訪客閘門導向組員的登入畫面；長貼文在 128×160 會分段。
+  - 測試：`backend/tests/`，用 PGlite（真正的 Postgres WASM）跑 001/004/005 migration，全部 99 項測試通過；也用 `npm run forum:dev` 在瀏覽器 240×320 / 128×160 走過登入→瀏覽→投票→回覆→發文。
+- **給組員的注意事項**：
+  - **需要先套用 migration 005**（用 migrator 或 postgres），否則 `/api/forum` 回 503（其他功能不受影響）。
+  - 示範帳號手機 `9100000001`–`9100000005`，PIN 由 `DEMO_USER_PIN` 設定；production 沒設 PIN 時 seed 會拒絕執行。seed 也會補上 `IN-BR`、`VN-AG`、`BD-RAJ` 三個 region（會出現在註冊的地區清單）。
+  - 我把 `users_role_check` 加了 `moderator`；如果 admin 程式有寫死角色清單請留意。
+  - 沒做：照片上傳（P1）、reply-to-reply 的按鍵入口。Cloud Phone 實機鍵碼尚未驗證。詳見 `docs/FARMER_CIRCLE.md`。

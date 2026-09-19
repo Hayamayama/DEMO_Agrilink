@@ -1,7 +1,7 @@
 const ITEMS = [
   { label: 'Market Prices', to: 'MarketPrices' },
   { label: 'Sell / Buy', to: 'ComingSoon' },
-  { label: 'Farmer Circle', to: 'ComingSoon' },
+  { label: 'Farmer Circle', to: 'FarmerCircleHome' },
   { label: 'Ask AI', to: 'AskAIHome' },
   { label: 'Daily Tasks', to: 'ComingSoon' },
   { label: 'Weather', to: 'Weather' },
