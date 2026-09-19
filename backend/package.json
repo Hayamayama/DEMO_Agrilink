@@ -8,7 +8,11 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "ceda:catalog": "node db/syncCeda.js catalog",
+    "ceda:geographies": "node db/syncCeda.js geographies",
+    "ceda:markets": "node db/syncCeda.js markets",
+    "ceda:sync": "node db/syncCeda.js sync"
   },
   "dependencies": {
     "express": "^4.21.0",
