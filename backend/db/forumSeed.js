@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { POSTS, DEMO_USERS, DEMO_REGIONS, VOTER_COUNT } from './forumSeedData.js';
+import { POSTS, DEMO_USERS, DEMO_REGIONS, DEMO_CROPS, CROP_NAMES, VOTER_COUNT } from './forumSeedData.js';
 
 // Deterministic demo content for Farmer Circle. Safe to run repeatedly: rows use
 // fixed ids and every run only refreshes their timestamps (so the forum looks
@@ -55,6 +55,12 @@ export async function seedDemo(pool, { auth, pin = process.env.DEMO_USER_PIN, no
     if (role !== 'member') await pool.query('UPDATE app.users SET role = $2, updated_at = now() WHERE id = $1 AND role = \'member\'', [id, role]);
     if (expertTitle) await pool.query('UPDATE app.users SET is_verified_expert=true,expert_title=$2,updated_at=now() WHERE id=$1', [id, expertTitle]);
     userIds.set(key, id);
+  }
+  // Their crops, only while a member has none: crops changed in Settings are kept on later runs.
+  for (const [code, name] of CROP_NAMES) await pool.query('INSERT INTO app.crops (code, name) VALUES ($1, $2) ON CONFLICT (code) DO NOTHING', [code, name]);
+  for (const [key, codes] of Object.entries(DEMO_CROPS)) {
+    await pool.query(`INSERT INTO app.user_crops (user_id, crop_id) SELECT $1, id FROM app.crops WHERE code = ANY($2::text[])
+      AND NOT EXISTS (SELECT 1 FROM app.user_crops WHERE user_id = $1) ON CONFLICT DO NOTHING`, [userIds.get(key), codes]);
   }
   const voters = Array.from({ length: VOTER_COUNT }, (_, n) => seedId(`voter:${n + 1}`));
   await pool.query(`INSERT INTO app.users (id, status) SELECT unnest($1::uuid[]), 'deleted' ON CONFLICT (id) DO NOTHING`, [voters]);

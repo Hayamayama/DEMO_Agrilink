@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { startForum } from './helpers.js';
+import { seedDemo } from '../db/forumSeed.js';
 
 // Ask AI and Weather personalise from these profile fields.
 test('the profile carries region code, coordinates and crop codes', async () => {
@@ -16,6 +17,27 @@ test('the profile carries region code, coordinates and crop codes', async () => 
     await t.pool.query("INSERT INTO app.crops (code, name) VALUES ('wheat','Wheat'), ('rice','Rice') ON CONFLICT DO NOTHING");
     await t.pool.query("INSERT INTO app.user_crops (user_id, crop_id) SELECT $1, id FROM app.crops WHERE code IN ('wheat','rice')", [user.id]);
     assert.deepEqual((await t.auth.profileFor(t.pool, user.id)).cropCodes, ['rice', 'wheat']);
+  } finally { await t.close(); }
+});
+
+// These members exist so every live-price district has someone to sign in as (docs/CODEBASE_STATUS.md).
+test('Uttar Pradesh demo members have a live-price district and crops, and keep edited crops', async () => {
+  const t = await startForum();
+  try {
+    const districts = {};
+    for (const n of ['11', '12', '13', '14', '15']) {
+      const { user } = await t.auth.login({ phone: `91000000${n}`, pin: '246810' });
+      districts[n] = [user.regionCode, user.cropCodes];
+      assert.ok(user.regionLat != null && user.regionLng != null, 'Weather and nearest-mandi need coordinates');
+    }
+    assert.deepEqual(districts, {
+      11: ['IN-UP-MRT', ['potato', 'wheat']], 12: ['IN-UP-AGR', ['onion', 'potato']], 13: ['IN-UP-LKO', ['rice', 'tomato']],
+      14: ['IN-UP-VNS', ['rice', 'wheat']], 15: ['IN-UP-LKO', ['onion', 'potato']],
+    });
+    const { user } = await t.auth.login({ phone: '9100000013', pin: '246810' });
+    await t.pool.query("DELETE FROM app.user_crops WHERE user_id = $1 AND crop_id = (SELECT id FROM app.crops WHERE code = 'tomato')", [user.id]);
+    await seedDemo(t.pool, { auth: t.auth, pin: '246810' });
+    assert.deepEqual((await t.auth.profileFor(t.pool, user.id)).cropCodes, ['rice']);
   } finally { await t.close(); }
 });
 
