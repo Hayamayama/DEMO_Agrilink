@@ -1,0 +1,17 @@
+/* Notices stay visible while the long detail cards scroll. */
+.forum-screen > .forum-flash { position: sticky; top: 0; z-index: 3; }
+/* Local Market: builds on the Farmer Circle palette (forum-* classes). 240x320 first, 128x160 must work. */
+.market-line { display: flex; gap: 6px; padding: 1px 0; font-size: var(--forum-fs-body); line-height: 1.25; }
+.market-k { flex: 0 0 4.6em; color: var(--forum-dim); font-size: var(--forum-fs-meta); font-weight: 700; }
+.market-v { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
+.market-card { align-items: flex-start; padding: 4px var(--pad); }
+.market-card .forum-title { -webkit-line-clamp: 1; }
+.market-bad { border-left-color: var(--forum-danger); }
+.market-bad .forum-choice-value { color: var(--forum-danger); }
+.market-code { padding: 4px var(--pad); text-align: center; background: var(--forum-surface-2); border-bottom: 1px solid var(--forum-line); }
+.market-code .big { color: var(--forum-accent); letter-spacing: 4px; }
+@media (max-width: 160px) {
+  .market-k { flex-basis: 3.8em; }
+  .market-card { padding: 2px var(--pad); }
+  .market-code .big { font-size: 16px; letter-spacing: 2px; }
+}

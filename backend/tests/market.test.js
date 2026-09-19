@@ -197,7 +197,10 @@ test('offer → counter → accept → both confirm → schedule → code → re
     assert.equal(Number(row.sold_quantity), 90);
 
     // rating: once each, only after completion
+    assert.equal((await buyer.get(`/api/market/deals/${dealId}`)).body.item.ratedByMe, false);
     assert.equal((await buyer.post(`/api/market/deals/${dealId}/rating`, { stars: 5 })).status, 200);
+    assert.equal((await buyer.get(`/api/market/deals/${dealId}`)).body.item.ratedByMe, true);
+    assert.equal((await seller.get(`/api/market/deals/${dealId}`)).body.item.ratedByMe, false);
     assert.equal((await buyer.post(`/api/market/deals/${dealId}/rating`, { stars: 4 })).body.error.code, 'CONFLICT');
 
     // audit trail exists

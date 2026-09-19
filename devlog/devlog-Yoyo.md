@@ -401,3 +401,19 @@
   - 取貨代碼由 `HMAC(MARKET_CODE_SECRET 或 AUTH_LOOKUP_SECRET, deal_id)` 算出，只有買方看得到；賣方連錯 5 次鎖 15 分鐘。
   - 定價為 fixed 的 listing，offer 單價必須等於標價。
 - **給組員的注意事項**：主機 006 已套用，部署後 `/api/market` 才會生效；目前沒有前端畫面。offer 過期清理用 `expireStale()`，每 5 分鐘由 router 內的 timer 執行。
+
+## 202609191628 · Local Market 前端（keypad 畫面）
+
+- **想解決的問題**：後端 `/api/market` 已完成但沒有畫面；主選單的「Sell / Buy」還是 Coming Soon。
+- **做了什麼改動**
+  - 新增 `frontend/js/market/`（`marketApi.js`、`marketUtils.js`、`marketForm.js`、`marketForms.js`、`marketScreens.js`、`marketTrades.js`）與 `css/market.css`，沿用 Farmer Circle 的 `forum-*` 樣式、ForumPicker、T9 文字輸入。主選單「Sell / Buy」改指向 `MarketHome`。
+  - 畫面：Market 首頁（1 瀏覽、2 買家需求、3 賣農產品、4 發買家需求、5 我的報價、6 我的交易）→ 列表（可篩選作物 / 範圍 / 排序）→ 詳情（出價、檢舉、封鎖、移除）→ 報價（接受 / 還價 / 拒絕 / 撤回）→ 交易（確認條款、排定取貨、賣方輸入取貨碼、買方標記收貨、賣方記錄付款、評價、取消）。
+  - 輸入方式：日期、單位、時間窗、取消原因都用選單；數量/價格用數字鍵（`#` = 小數點、`*` = 刪除）；只有取貨地點與備註需要 T9。改動每一步都用 `?debug` 以外的實際按鍵走過。
+  - `backend/dev/forumDevServer.js` 也掛上 `/api/market` 並加入幾個作物，方便本機用 `npm run forum:dev` 試（PGlite，重啟即清空）。
+  - 後端小改：deal 回應加 `ratedByMe`（評價後不再顯示「Rate this trade」），測試已補。
+- **驗證結果**：在 240×320 用瀏覽器完整走過「出價 → 賣方接受 → 買方確認 → 賣方排定取貨 → 買方看到取貨碼 → 賣方驗證 → 買方收貨 → 賣方記錄付款 → 完成 → 評價」；128×160 檢查了表單、選單、詳情與必填驗證。全套 120 項後端測試通過。
+- **給組員的注意事項**
+  - 賣方一側（accept、排定取貨、輸入取貨碼、記錄付款）我是用 API 腳本代替第二支手機，UI 本身是同一套畫面，但**兩台真機 / 兩個瀏覽器同時操作尚未實測**。
+  - 目前沒有即時推播：對方操作後要重新進入畫面才會看到（每次進入都會重抓）。首頁「My Offers (n new)」徽章也只在進入首頁時更新。
+  - 需要先登入；還沒有 Cloud Phone 實機鍵碼驗證（沿用既有 keymap）。
+  - 發布 listing 時作物清單來自 `/api/auth/options`，主機的 `app.crops` 需要有資料，否則作物選單是空的。

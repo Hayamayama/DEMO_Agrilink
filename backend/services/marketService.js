@@ -522,7 +522,8 @@ export function createMarketService({ pool, limiter, env = process.env, config =
   // ================= deals =================
   const DEAL_SELECT = `
     SELECT d.*, d.pickup_date::text AS pickup_date_text, COALESCE(l.unit, br.unit) AS unit, c.code AS crop_code, c.name AS crop_name,
-           bp.display_name AS buyer_name, sp.display_name AS seller_name
+           bp.display_name AS buyer_name, sp.display_name AS seller_name,
+           COALESCE((SELECT array_agg(r.rater_id) FROM app.market_ratings r WHERE r.deal_id = d.id), '{}') AS rated_by
     FROM app.market_deals d
     LEFT JOIN app.market_listings l ON l.id = d.listing_id
     LEFT JOIN app.market_buy_requests br ON br.id = d.buy_request_id
@@ -544,7 +545,7 @@ export function createMarketService({ pool, limiter, env = process.env, config =
         // Revealed only to the two parties, and only once both have confirmed the terms.
         location: ['awaiting_confirmation', 'cancelled'].includes(row.status) ? null : row.pickup_location_private },
       handoverVerified: Boolean(row.handover_verified_at), buyerReceived: Boolean(row.buyer_received_at),
-      paymentStatus: row.seller_payment_status, cancelReason: row.cancel_reason,
+      paymentStatus: row.seller_payment_status, cancelReason: row.cancel_reason, ratedByMe: (row.rated_by || []).includes(user.id),
       updatedAt: iso(row.updated_at), completedAt: iso(row.completed_at),
       disclosure: 'AgriLink connects buyers and sellers. It does not process payments, inspect goods, or guarantee quality or completion.',
     };
