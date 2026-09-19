@@ -22,6 +22,7 @@ test('best window is the longest run of daylight hours with nothing unsuitable',
   const hourly = day('2026-09-20', (h) => (h >= 7 && h < 9) || (h >= 11 && h < 16));
   const w = bestSprayWindow(hourly, '2026-09-20');
   assert.deepEqual([w.from, w.to, w.hours, w.status], ['11:00', '16:00', 5, 'optimal']);
+  assert.deepEqual(w.watch, []);
   // A run that lasts until the end of daylight still gets its end time.
   const late = bestSprayWindow(day('2026-09-20', (h) => h >= 14), '2026-09-20');
   assert.deepEqual([late.from, late.to], ['14:00', '18:00']);
@@ -37,6 +38,10 @@ test('today counts only the hours left; another day is judged by its forecast', 
   assert.equal(now.bestWindow, null, 'the morning window has passed');
   const tomorrow = assessSprayConditions(weather, { date: '2026-09-20' });
   assert.deepEqual([tomorrow.basis, tomorrow.overall, tomorrow.at, tomorrow.bestWindow.from, tomorrow.bestWindow.to], ['forecast', 'optimal', '08:00', '08:00', '12:00']);
+  const humid = assessSprayConditions({ current: { time: '2026-09-20T06:00' }, hourly: day('2026-09-20', () => true).map((h) => ({ ...h, relativeHumidity: 90 })) });
+  // 90% humidity at 22°C also puts delta-T under 2.
+  assert.deepEqual(humid.bestWindow.watch, ['humidity', 'deltaT'], 'caution factors by param, for the handset to word');
+  assert.match(humid.bestWindow.reason, /watch humidity, delta-T/);
   assert.equal(assessSprayConditions(weather, { date: '2026-09-25' }), null, 'no forecast for that day');
 });
 

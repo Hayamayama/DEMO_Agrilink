@@ -86,10 +86,12 @@ export function bestSprayWindow(hourly, date, fromHour = FIRST_HOUR) {
   close();
   if (!best) return null;
   const { run: r } = best;
-  const cautions = [...new Set(r.flatMap((h) => h.factors.filter((f) => f.status === 'caution').map((f) => LABELS[f.param])))];
+  // `watch` lists the factors (by param) that are only "caution" somewhere in the window, so the
+  // handset can word it in the member's language; `reason` is the same in English.
+  const watch = [...new Set(r.flatMap((h) => h.factors.filter((f) => f.status === 'caution').map((f) => f.param)))];
   return {
-    from: hhmm(r[0].hr), to: hhmm(r[r.length - 1].hr + 1), hours: r.length, status: worst(r.flatMap((h) => h.factors)),
-    reason: cautions.length ? `No unsuitable hour; watch ${cautions.join(', ')}.` : 'All readings in the good range.',
+    from: hhmm(r[0].hr), to: hhmm(r[r.length - 1].hr + 1), hours: r.length, status: worst(r.flatMap((h) => h.factors)), watch,
+    reason: watch.length ? `No unsuitable hour; watch ${watch.map((p) => LABELS[p]).join(', ')}.` : 'All readings in the good range.',
     startIndex: r[0].i,
   };
 }
