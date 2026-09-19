@@ -134,3 +134,30 @@
 - 正式上線時應改用團隊持有網域，更新 Nginx `server_name`、DNS A record、TLS 憑證與 Cloud Phone Console 的 widget URL。
 - TCP 80 與 443 現已公開；不得把敏感測試資料或管理介面放進此靜態網站。
 
+---
+
+## 202609191204 GMT+8 — 確認 Agrilink 已部署服務的公開 URL
+
+### 發現／問題
+
+- VM 上新增了 `/home/ubuntu/dogbark` 專案與已啟用的 `agrilink.service`。
+- Agrilink Node.js backend 運行在 `127.0.0.1:3000`，不應直接對公網開放該埠。
+
+### 要解決什麼
+
+- 確認 Agrilink 對外可使用的網址，並釐清它與 Cloud Phone demo 的路由關係。
+
+### 做了什麼改動
+
+- 以唯讀方式檢查 systemd、Nginx 與本機 HTTP 回應。
+- 確認 Nginx HTTPS 根路徑 `/` 已反向代理至 `http://127.0.0.1:3000`，且回應為 `200 OK`。
+- Agrilink 公開 URL：
+
+  ```text
+  https://203-116-30-130.sslip.io/
+  ```
+
+### 組員注意事項
+
+- Cloud Phone demo 仍位於同一網域的 `/cloudphone-2025meichuhackathon-demo/`；較長的路徑優先匹配，因此不受 Agrilink 根路徑代理影響。
+- Agrilink 由 `agrilink.service` 管理。檢查狀態請用 `sudo systemctl status agrilink`；更新後應重啟該 service，不要直接手動執行 `node server.js` 佔用 3000 埠。
