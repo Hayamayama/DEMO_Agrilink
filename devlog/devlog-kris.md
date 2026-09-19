@@ -378,3 +378,24 @@
 - 若取得個人 data.gov.in key，設定 `MANDI_API_KEY` 即可（每頁 500 筆、不共用限流）。
 - 歷史趨勢要靠每日累積；前幾天詳情頁會顯示「Trend appears after a few days of prices」。
 - **`services/ttsService.test.js` 目前失敗**：TTS 已改用 Google 翻譯（5603058），但該測試仍模擬 Gemini 並會真的連網；請 TTS 負責人更新。
+
+---
+
+## 202609191849 GMT+8 — Today's Farm 行情改讀同一份同步資料（與 Yoyo 協議）
+
+### 發現／問題
+
+- Today's Farm（f370b2e）另外接了 `mandi-api.onrender.com`（非官方、Render 免費方案會休眠），距離用寫死的「離 Lucknow 公里數」表，淨收益用舊公式；與 Market Prices 同一位使用者可能看到不同數字。
+
+### 做了什麼改動
+
+- `createFarmPriceService` 改包 `createPriceService`：依農場座標找最近市場、列出接下來 5 個市場，淨收益公式與 Market Prices 相同（兩段運費都從農場算）。回傳格式不變，儀表板與 `marketSnapshot` 不需修改；農場所在地區沒有同步資料時回傳已存的 snapshot（標 stale）。
+- 移除 `providers/mandiPriceProvider.js` 與其測試；示範農場地區改為與其座標一致的 `IN-UP-LKO`；兩份規劃文件加註「已改用 data.gov.in，勿再加回」。
+
+### 部署與驗證
+
+- VM 更新至 `45321bc`，服務 active。示範農場（Lucknow）：最近市場 Safdarganj ₹2,432；儀表板摘要「Unnao +₹409/qt net」，與 Market Prices 同地點列表逐一相符，source=live、2026-09-19。
+
+### 組員注意事項
+
+- 全 app 行情只有一個來源：`app.market_prices`（`syncMandi.js` 每 30 分鐘同步）。新功能需要價格請用 `createPriceService`，不要另接 API。
