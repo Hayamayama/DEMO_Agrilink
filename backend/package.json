@@ -9,6 +9,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
+    "db:migrate": "node db/migrate.js",
+    "admin:create": "node db/createAdmin.js",
     "ceda:catalog": "node db/syncCeda.js catalog",
     "ceda:geographies": "node db/syncCeda.js geographies",
     "ceda:markets": "node db/syncCeda.js markets",

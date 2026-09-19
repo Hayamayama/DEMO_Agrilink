@@ -30,3 +30,7 @@ export const user = {
     return this.location;
   },
 };
+
+// Identity is server-authoritative. `profile` is only the currently rendered
+// copy; the HTTP-only session cookie is the credential and never touches JS.
+export const identity = { profile: null, options: null };

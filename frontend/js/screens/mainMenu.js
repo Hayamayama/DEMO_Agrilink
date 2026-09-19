@@ -5,6 +5,7 @@ const ITEMS = [
   { label: 'Ask AI', to: 'AskAIHome' },
   { label: 'Daily Tasks', to: 'ComingSoon' },
   { label: 'Weather', to: 'Weather' },
+  { label: 'Settings', to: 'Settings' },
 ];
 
 export default {

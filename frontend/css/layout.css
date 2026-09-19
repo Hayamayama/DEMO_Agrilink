@@ -14,3 +14,8 @@
 .item.focused { background: var(--focus-bg); color: var(--focus-fg); border-left-color: #000; }
 .item.focused .dim { color: #333; }
 .scroll { height: 100%; overflow: hidden; }
+.form-screen { padding: var(--pad); }
+.entry { padding: 9px 0; border-bottom: 1px solid #1d4a23; }
+.entry-label { color: var(--dim); font-size: calc(var(--fs) * .8); text-transform: uppercase; }
+.entry-value { min-height: 24px; font-size: calc(var(--fs) * 1.15); word-break: break-all; }
+.entry-hint { margin-top: 4px; font-size: calc(var(--fs) * .76); }
