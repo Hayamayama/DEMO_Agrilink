@@ -10,3 +10,12 @@
 - **Demo seeds**：Today’s Farm 改為 Uttar Pradesh / Lucknow 地點，加入 rice/wheat/onion 價格快照與完整 spray weather seed。既有 `Test_Admin` owner 邏輯保留。
 - **合併相容性**：兩次 rebase 遠端 main 共 20 個新 commits，保留新增的 farm/team/shortcut、全州 mandi sync 與 browser speech 流程；Google Translate 測試改用 provider injection，避免測試直接連外並保留既有 cache 行為。
 - **驗證**：已用真實 Mandi API 與 Open-Meteo 在 Mac local 驗證 Today 回應（5 個今日任務、7 個 spray factors、market cache、community activity）；完整 backend 測試 160/160 通過。commit/push 與 VM 部署狀態會在完成後補記。
+
+### 部署結果
+
+- Mac feature commit `f370b2e` 已 push 到 GitHub main；VM 只用 `git pull --ff-only` 更新，沒有直接修改 VM 程式碼。
+- migration `011_farm_live_data` 已套用；forum 與 farm seeds 已重跑且保持 idempotent。
+- 部署前 PostgreSQL `app` schema 備份：`/home/ubuntu/deploy-backups/farm-live-20260919T103440Z/app.dump`（另有 SHA-256 與部署前 git HEAD）。
+- 線上 `agrilink` service active，HTTPS 回應 200。驗證結果：Today 5 tasks、spray 7 factors、Open-Meteo attribution、market live/cache fallback、community activity 正常。
+- PostgreSQL 驗證：`Test_Admin` 是 `Green Field Cooperative` 的 active owner；20 demo posts、3 verified experts、2 AI replies、5 Hindi translations 與 price snapshots 已建立。
+- VM 為 Node 18，`google-translate-api-x` 宣告 Node 21 engine 因此 npm 顯示警告；實際 module import、服務啟動與 API smoke test 均成功。後續仍建議將 VM Node 升級到目前支援的 LTS。
