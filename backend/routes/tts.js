@@ -16,8 +16,8 @@ const limitPayload = (message) => ({
   error: { code: 'TTS_RATE_LIMIT', message, retryable: true },
 });
 
-// Most requests read the same screens (menus, a price list) again, so recent audio is kept in
-// memory and served without calling Gemini. Small LRU: a Map keeps insertion order.
+// Most requests read the same screens (menus, a price list) again, so recent translations are kept in
+// memory and served without calling Google. Small LRU: a Map keeps insertion order.
 const CACHE_MAX = 60;
 const cache = new Map();
 const cacheKey = (text, language) => crypto.createHash('sha256').update(`${language}\n${text}`).digest('hex');
@@ -52,14 +52,7 @@ export function ttsRouter({ auth } = {}) {
     res.json({ ok: true, tts: isConfigured(), maxChars: TTS_MAX_CHARS, languages: [...ALLOWED_LANGUAGES] });
   });
 
-  const sendAudio = (res, { audio, mimeType }) => {
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Length', audio.length);
-    res.setHeader('Cache-Control', 'no-store');
-    res.send(audio);
-  };
-
-  // Validates, then serves a cached clip without touching the quota; only misses are rate limited.
+  // Validates, then serves a cached translation without touching the quota; only misses are rate limited.
   function readRequest(req, res, next) {
     const { text, language } = req.body || {};
     if (!text || typeof text !== 'string' || !text.trim()) {
@@ -71,20 +64,20 @@ export function ttsRouter({ auth } = {}) {
     req.tts = { text: text.trim().slice(0, TTS_MAX_CHARS), language: language || 'en' };
     req.tts.key = cacheKey(req.tts.text, req.tts.language);
     const hit = cache.get(req.tts.key);
-    if (hit) { remember(req.tts.key, hit); return sendAudio(res, hit); }
+    if (hit) { remember(req.tts.key, hit); return res.status(200).json({ ok: true, text: hit.text }); }
     next();
   }
 
-  // Main endpoint: synthesize speech and return raw audio.
+  // Main endpoint: translate text and return JSON.
   router.post('/', memberOnly(auth), readRequest, limits, async (req, res) => {
-    // Let client abort cancel the upstream Gemini call.
+    // Let client abort cancel the upstream call.
     const controller = new AbortController();
     req.on('aborted', () => controller.abort());
 
     try {
-      const clip = await synthesize(req.tts.text, req.tts.language, { signal: controller.signal });
-      remember(req.tts.key, clip);
-      sendAudio(res, clip);
+      const result = await synthesize(req.tts.text, req.tts.language, { signal: controller.signal });
+      remember(req.tts.key, result);
+      res.status(200).json({ ok: true, text: result.text });
     } catch (err) {
       sendError(res, err);
     }

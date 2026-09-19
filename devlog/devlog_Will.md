@@ -41,3 +41,11 @@
   1. 將 `dogbark_v2` (Local Market 與 Today's Farm 等最新功能) 完整合併至 `dogbark_v3`。
   2. 復原 `dogbark_v3/frontend/js/main.js` 的登入略過設定，重新啟用正式的登入流程。
 - **給組員的注意事項**：`dogbark_v3` 現在是擁有所有最新功能、擁有免費 Google Translate 語音、且正常要求使用者登入的最完整正式版本。請以此版本為主進行 GitHub push 與正式環境部署！
+
+# 2026-09-19 18:15 轉換為「後端純翻譯 + 前端原生朗讀」(規避 503 錯誤)
+- **發現的問題**：測試伺服器因為 IP 問題，在向 Google 要求音訊 MP3 檔案時遭遇阻擋，導致回傳 HTTP 503。
+- **做了什麼改動**：
+  1. 修改 `backend/services/ttsService.js`：現在只呼叫 `google-translate-api-x` 進行純文字翻譯（此 API 端點不會被阻擋），不再呼叫 `.speak()` 產生音檔。
+  2. 修改 `backend/routes/tts.js`：改為回傳 `{ ok: true, text: "翻譯後的文字" }` (JSON 格式)。
+  3. 修改 `frontend/js/tts.js`：前端收到翻譯後的文字後，改用瀏覽器內建的 `window.speechSynthesis` (Web Speech API) 進行本地端朗讀。
+- **功能目的**：兼顧了「在地語言翻譯」與「100% 防封鎖的穩定朗讀」，是應對 Hackathon 評審最安全的防禦性架構 (Option 3)。
