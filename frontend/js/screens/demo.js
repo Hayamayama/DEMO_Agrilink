@@ -1,11 +1,12 @@
 import { el } from '../dom.js';
 import { demo, startGuidedDemo } from '../demo.js';
 import { getJSON } from '../api.js';
+import { marketApi } from '../market/marketApi.js';
 
 const JOURNEYS = [
   ['Now', 'Today’s work, weather and spray decision', 'FarmGate'],
   ['Alerts', 'Read a fixed weather advisory aloud with #', 'DemoAlerts'],
-  ['Trade', 'Review terms and pickup code before handover', 'MarketDeals'],
+  ['Trade', 'Review terms and pickup code before handover', 'DemoTrade'],
 ];
 
 function item(number, title, detail) {
@@ -93,5 +94,33 @@ export const DemoAlerts = {
     root.append(el('msg', a.disclosure));
     root.append(el('msg', 'Press # to read this advisory aloud.'));
     return root;
+  },
+};
+
+let tradeState = { status: 'idle', error: null };
+
+async function openDemoTrade(ctx) {
+  tradeState = { status: 'loading', error: null };
+  ctx.rerender();
+  try {
+    const { items } = await marketApi.deals();
+    const deal = items.find((item) => item.status === 'pickup_scheduled');
+    if (!deal) throw new Error('The demo pickup is not ready yet.');
+    ctx.router.replace('MarketDeal', { id: deal.id, notice: 'Demo path: confirm the terms and pickup code.' });
+  } catch (err) {
+    tradeState = { status: 'error', error: err.message || 'Could not open demo trade.' };
+    ctx.rerender();
+  }
+}
+
+export const DemoTrade = {
+  name: 'Demo trade', title: 'Trade · Demo',
+  softLeft: { label: '', handler() {} },
+  softCenter: { label: 'Retry', handler(ctx) { openDemoTrade(ctx); } },
+  onShow(ctx) { if (tradeState.status === 'idle') openDemoTrade(ctx); },
+  onHide() { tradeState = { status: 'idle', error: null }; },
+  render() {
+    if (tradeState.status === 'error') return el('msg', tradeState.error);
+    return el('msg', 'Opening the pickup-code demo…');
   },
 };

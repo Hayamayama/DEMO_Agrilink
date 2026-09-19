@@ -106,8 +106,19 @@ export async function seedMarketDemo(pool, { env = process.env, now = Date.now()
     await q(`INSERT INTO app.market_ratings (deal_id, rater_id, ratee_id, stars) VALUES ($1,$2,$3,5), ($1,$3,$2,5) ON CONFLICT DO NOTHING`, [deal.id, ravi.id, meena.id]);
   }
 
-  // e) Lucknow: Pooja offers on Imran's tomatoes -> waiting for Imran to answer
-  await market.offerOnListing(users['Pooja Rawat'], ids['imran-tomato'], { requestId: 'seed-mkt-offer-e', ...terms(80, 16, { note: 'For my shop in Bakshi Ka Talab' }) });
+  // e) the judge path: terms are mutually confirmed and a pickup code is ready,
+  // but handover has not happened yet. Ravi is the buyer, so the code is visible
+  // in his detail screen and can demonstrate the safe in-person exchange.
+  const e = await market.offerOnListing(users['Ravi K.'], ids['rahim-onion'], { requestId: 'seed-mkt-offer-e', ...terms(40, 42) });
+  if (['open', 'countered'].includes((await offerRow(e.id)).status)) await market.accept(users['Rahim U.'], e.id);
+  deal = await dealOf(e.id);
+  const rahim = users['Rahim U.'];
+  const demoStep = async (when, fn) => { if (deal.status === when) { await fn(); deal = await dealOf(e.id); } };
+  await demoStep('awaiting_confirmation', async () => { await market.confirm(ravi, deal.id); await market.confirm(rahim, deal.id); });
+  await demoStep('agreed', () => market.schedule(rahim, deal.id, { pickupDate: dayOffset(1, now), pickupWindowStart: '10:00', pickupWindowEnd: '12:00', location: 'Patna collection point' }));
+
+  // f) Lucknow: Pooja offers on Imran's tomatoes -> waiting for Imran to answer
+  await market.offerOnListing(users['Pooja Rawat'], ids['imran-tomato'], { requestId: 'seed-mkt-offer-f', ...terms(80, 16, { note: 'For my shop in Bakshi Ka Talab' }) });
 
   // Keep the demo fresh: open demo posts and live offers are pushed forward on every run.
   await q(`UPDATE app.market_listings SET expires_at = now() + interval '7 days', available_date = GREATEST(available_date, current_date), updated_at = now()
@@ -116,7 +127,7 @@ export async function seedMarketDemo(pool, { env = process.env, now = Date.now()
            WHERE is_demo AND status IN ('open','partially_reserved')`);
   await q(`UPDATE app.market_offers SET expires_at = now() + interval '7 days' WHERE status IN ('open','countered')
            AND (listing_id = ANY($1::uuid[]))`, [Object.values(ids)]);
-  log(`market demo: ${LISTINGS.length} listings, ${REQUESTS.length} requests, 5 negotiations`);
+  log(`market demo: ${LISTINGS.length} listings, ${REQUESTS.length} requests, 6 negotiations`);
   return { listings: LISTINGS.length, requests: REQUESTS.length };
 }
 
