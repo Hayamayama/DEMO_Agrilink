@@ -21,7 +21,8 @@ sudo systemctl restart agrilink
 echo 'map $http_upgrade $connection_upgrade { default upgrade; "" close; }' | sudo tee "$MAP" >/dev/null
 sudo cp "$DIR/deploy/agrilink.conf" "$SNIP"
 if ! sudo grep -q 'snippets/agrilink.conf' "$SITE"; then
-  sudo cp "$SITE" "$SITE.bak.$(date +%s)"
+  # keep backups OUTSIDE sites-enabled (nginx includes everything in that dir)
+  sudo mkdir -p /etc/nginx/backup && sudo cp "$SITE" "/etc/nginx/backup/cloudphone-demo.$(date +%s).bak"
   # insert after the 'root /var/www;' line of the 443 server block
   sudo sed -i '0,/root \/var\/www;/s||root /var/www;\n    include /etc/nginx/snippets/agrilink.conf;|' "$SITE"
 fi

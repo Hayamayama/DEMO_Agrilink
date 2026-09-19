@@ -97,3 +97,16 @@
   - 主機上 `git clone` 走公開 https，所以**要先 push 才能部署**。
   - 各組員本機 Node 版本可能與主機不同（主機為 18），請避免用 Node 20+ 才有的語法。
   - 主機上更新：`ssh` 進去後 `bash ~/dogbark/deploy/setup.sh`。
+
+## 202609191158 · 已部署到主辦主機（HTTPS 可用）
+
+- **發現的問題**：`setup.sh` 把 nginx 備份檔放進 `sites-enabled/`，nginx 會把該目錄全部載入，造成 `duplicate listen options`；`nginx -t` 失敗所以**沒有 reload，線上未受影響**。另外 `package.json` 的 `engines` 要求 Node>=20，主機是 18，只產生警告。
+- **想解決什麼**：完成第一次部署並驗證公開網址。
+- **做了什麼改動**
+  - 備份改放 `/etc/nginx/backup/`；`setup.sh` 同步修正。
+  - 部署完成：systemd 服務 `agrilink` active，nginx reload 成功。
+  - 外部驗證：`/` 200、官方範例路徑 200、`/api/weather` 回真實資料、HTTP 301 轉 HTTPS。
+- **給組員的注意事項**
+  - **備份檔絕對不要放在 `sites-enabled/`**。
+  - 後續更新：主機上 `bash ~/dogbark/deploy/setup.sh`（會 git pull 並重啟服務）；看 log：`journalctl -u agrilink -f`。
+  - 下一步（需本人操作）：登入 cloudphone.tech Console 用主辦給的 `*.sslip.io` 網址註冊 widget（Name: AgriLink、80×80 PNG icon），實機用 `?debug=1` 記錄軟鍵 key 值。
