@@ -32,7 +32,8 @@ function el(cls, text) {
 async function load(ctx) {
   loading = true; tried = true; error = null;
   try {
-    data = await getJSON(`/api/weather?lat=${user.lat}&lng=${user.lng}`);
+    const { lat, lng } = user.location;
+    data = await getJSON(`/api/weather?lat=${lat}&lng=${lng}`);
   } catch {
     error = 'Weather unavailable';
   }
@@ -55,6 +56,7 @@ export default {
     const head = el('', null);
     head.style.padding = 'var(--pad)';
     head.append(
+      el('', `📍 ${user.location.name}  # ▸`),
       el('big', `${data.current.temp}°C`),
       el('', `${icon} ${label} · Rain ${t.rain_prob}%`),
     );
@@ -82,6 +84,12 @@ export default {
     return wrap;
   },
   onKey(action, ctx) {
+    if (action === 'HASH') {
+      user.nextLocation();
+      data = null; error = null; tried = false;
+      ctx.rerender();
+      return true;
+    }
     if (action === 'LEFT' || action === 'RIGHT') {
       ctx.focus.move(action === 'LEFT' ? -1 : 1);
       return true;

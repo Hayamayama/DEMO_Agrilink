@@ -9,7 +9,7 @@
 #sk-r { text-align: right; }
 
 .list { display: flex; flex-direction: column; }
-.item { min-height: var(--row-h); padding: 6px var(--pad); display: flex; align-items: center; gap: 8px;
+.item { min-height: calc(var(--row-h) - 6px); padding: 6px var(--pad); display: flex; align-items: center; gap: 8px;
   border-bottom: 1px solid #1d4a23; border-left: 4px solid transparent; }
 .item.focused { background: var(--focus-bg); color: var(--focus-fg); border-left-color: #000; }
 .item.focused .dim { color: #333; }

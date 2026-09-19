@@ -175,3 +175,18 @@
   - 天氣頁可以用 emoji 圖示（仍保留文字標籤當備援）。
   - **Hindi / Bengali i18n 可以做**，字型不是阻礙；仍需注意長字串在 240×320 / 128×160 會換行，UI 要留空間。
   - 此筆未標明測試環境（simulator 或實機），請測的人補上；若是 simulator，實機需再測一次。
+
+## 202609191305 · 實機驗證確認 + 天氣頁顯示地區
+
+- **發現的問題**
+  - 上兩筆（右軟鍵 popstate、`#`/`*` 鍵值、emoji/印地語/孟加拉語字型）**是在實機（itel）上測的**，結果與 simulator 一致，鍵位與字型驗證完成。
+  - 天氣頁沒顯示是哪個地區的天氣；寫死的印度 Rampur 座標在台灣實機上看會很違和。
+- **想解決什麼**：天氣頁要標明地區，且 demo 時能快速切換地點。
+- **做了什麼改動**
+  - `frontend/js/state.js`：新增 `LOCATIONS`（Rampur IN / Taichung TW / Hanoi VN / Dhaka BD）、`user.location`、`user.nextLocation()`；選擇存 `localStorage`（有 try/catch）；`?lat=&lng=` 仍可覆寫。
+  - `frontend/js/screens/weather.js`：最上方顯示「📍 地區名 # ▸」；按 `#` 切換下一個地點並重新載入。
+  - CSS 微調（`.big` 2.4→2em、列高 -6px）讓建議文字在 240×320 不被切掉；128×160 亦確認可讀。
+- **給組員的注意事項**
+  - 地點清單目前是前端寫死的暫時方案；等 `/api/auth/session` 與 Settings 做好後，改讀使用者 profile 的 village + lat/lng，`LOCATIONS` 屆時可移除或當預設選項。
+  - `#` 在天氣頁被用來切換地點，其他畫面若要用 `#`（例如 T9 送出）互不影響（只在該畫面 `onKey` 處理）。
+  - 版面底線：內容高度要預留 header（📍）＋ 溫度 ＋ 3 列 ＋ 建議兩行，新增元素前先在 240×320 截圖確認。
