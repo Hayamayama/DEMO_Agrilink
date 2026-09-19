@@ -291,3 +291,14 @@
 - **做了什麼**：用主辦給的 key 以 `ubuntu` 登入，主機 `backend/.env` 補上非機密的 AI 設定（模型 gemini-3.5-flash-lite、逾時、限流），執行 `deploy/setup.sh`。服務 active，日誌 `prices: using Postgres`；線上首頁、`/api/ai/capabilities`、`ask-ai.css` 皆 200。
 - **目前狀態**：日誌顯示 `ai: no GEMINI_API_KEY`，線上 Ask AI 暫時只回 BASIC TIPS 固定清單。**主機 `.env` 還沒有 `GEMINI_API_KEY`**，加入後執行 `sudo systemctl restart agrilink` 即生效。
 - **給組員的注意事項**：`ubuntu` 可登入、`root` 不行；主機 Node 為 v18.19（`engines` 要求 >=20，npm 有警告但可運作）。
+
+## 202609191408 · Ask AI 線上啟用 Gemini（部署完成）
+
+- **做了什麼**：組員把本機 `GEMINI_API_KEY` 以 pipe 方式寫入主機 `backend/.env`（未經對話、未進 repo），重啟服務。
+- **驗證結果**：主機 `.env` 僅 1 行 key（長度 53）、服務 active、日誌 `ai: gemini configured`；對線上 `/api/ai/ask`（黃葉預設題）實測約 1.7 秒回真實答案（`fallback:false`）。
+- **給組員的注意事項**
+  - 仍未在線上實測：照片、語音、印地語；Cloud Phone 模擬器與 itel 實機的相機/麥克風未驗證。
+  - `frontend/img/sample-leaf-1.jpg`、`sample-leaf-2.jpg` 尚未放，demo 照片目前無法使用。
+  - 限流為每 IP 每分鐘 6 次、每日 30 次；demo 前避免用光額度。
+  - 更新 key 或設定：改主機 `backend/.env` 後 `sudo systemctl restart agrilink`，日誌應見 `ai: gemini configured`。
+  - 主辦提供的 SSH 私鑰在組員本機 `~/Downloads/id_ed25519`，不可進 repo，事後請妥善保管或刪除。
