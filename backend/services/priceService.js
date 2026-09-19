@@ -52,7 +52,7 @@ export function createPriceService(repo) {
       const last = rows[rows.length - 1], prev = rows[rows.length - 2];
       return {
         code: last.market_code, name: last.market_name, lat: last.lat, lng: last.lng,
-        price: last.modal, date: last.date, sample: last.sample,
+        price: last.modal, date: last.date, source: last.source, sample: last.sample,
         change_pct: prev ? Math.round(((last.modal - prev.modal) / prev.modal) * 1000) / 10 : 0,
         trend: rows.slice(-7).map((r) => r.modal),
       };
@@ -65,6 +65,7 @@ export function createPriceService(repo) {
     return {
       crop, region, currency: first.currency, unit: first.unit,
       home: homeMarket.code, date: homeMarket.date,
+      source: homeMarket.source,
       sample: markets.some((m) => m.sample),
       markets, analysis: analyze(homeMarket.trend),
     };
@@ -75,7 +76,11 @@ export function createPriceService(repo) {
     if (!data) return null;
     const a = data.markets.find((m) => m.code === from), b = data.markets.find((m) => m.code === to);
     if (!a || !b) return null;
-    return { ...netProfit({ from: a, to: b, qty }), currency: data.currency, unit: data.unit, sample: data.sample };
+    return {
+      ...netProfit({ from: a, to: b, qty }),
+      currency: data.currency, unit: data.unit, sample: data.sample,
+      price_date: data.date, source: data.source,
+    };
   }
 
   return { getPrices, getNetProfit };

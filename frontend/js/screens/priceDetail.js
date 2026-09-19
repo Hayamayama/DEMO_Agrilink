@@ -4,6 +4,12 @@ import { money, signed, bars, h } from '../fmt.js';
 
 let qty = 5, calc = null, error = null, loading = false;
 
+function dataDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return value || 'Unknown date';
+  const [year, month, day] = value.split('-');
+  return `${day} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(month) - 1]} ${year}`;
+}
+
 async function load(ctx) {
   loading = true; error = null;
   const { crop, market } = ctx.params;
@@ -43,6 +49,7 @@ export default {
       r.append(h('', a), h(i >= 3 ? '' : 'dim', b));
       wrap.appendChild(r);
     });
+    wrap.appendChild(h('msg dim', `Price data: ${dataDate(calc.price_date)} · ${calc.source === 'agmarknet' ? 'CEDA / AGMARKNET' : calc.source || 'Database'}`));
     if (calc.estimated) wrap.appendChild(h('msg dim hide-small', 'Transport is an estimate'));
     return wrap;
   },

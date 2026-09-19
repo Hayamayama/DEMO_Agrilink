@@ -2,8 +2,19 @@ import { getJSON } from '../api.js';
 import { user } from '../state.js';
 import { money, h } from '../fmt.js';
 
-const CROPS = [['rice', 'Rice'], ['wheat', 'Wheat'], ['onion', 'Onion'], ['tomato', 'Tomato']];
+// These are the crops currently imported into Postgres for the selected region.
+const CROPS = [['rice', 'Rice']];
 let ci = 0, data = null, error = null, loading = false, lastIdx = 0;
+
+function dataDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return value || 'Unknown date';
+  const [year, month, day] = value.split('-');
+  return `${day} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(month) - 1]} ${year}`;
+}
+
+function sourceLabel(source) {
+  return source === 'agmarknet' ? 'CEDA / AGMARKNET' : source || 'Database';
+}
 
 async function load(ctx) {
   loading = true; error = null;
@@ -32,7 +43,7 @@ export default {
   render() {
     const wrap = h('list');
     const crop = h('item');
-    crop.append(h('', `◄ ${CROPS[ci][1]} ►`));
+    crop.append(h('', CROPS[ci][1]));
     wrap.appendChild(crop);
 
     if (!data) { wrap.appendChild(h('msg', error || 'Loading…')); return wrap; }
@@ -40,9 +51,10 @@ export default {
     data.markets.forEach((m, i) => {
       const row = h('item');
       const arrow = m.change_pct > 0 ? '▲' : m.change_pct < 0 ? '▼' : '';
-      row.append(h('', i === 0 ? 'Your area' : m.name), h('dim', `${money(m.price, data.currency)}/qt ${arrow}`));
+      row.append(h('', i === 0 ? `Your area · ${m.name}` : m.name), h('dim', `${money(m.price, data.currency)}/qt ${arrow}`));
       wrap.appendChild(row);
     });
+    wrap.appendChild(h('msg dim', `Data: ${dataDate(data.date)} · ${sourceLabel(data.source)}`));
     wrap.appendChild(h('msg', `Tip: ${data.analysis.reason}`));
     if (data.sample) wrap.appendChild(h('msg dim hide-small', 'Sample data'));
     return wrap;

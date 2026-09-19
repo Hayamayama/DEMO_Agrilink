@@ -62,3 +62,18 @@ test('home market comes first even if the repo returns rows in a different order
   assert.equal(d.markets[0].trend.length, 7);
   assert.ok(d.markets[0].trend[6] > d.markets[0].trend[0]); // oldest -> newest despite reversed input
 });
+
+test('historical database rows retain their latest date and source', async () => {
+  const historical = createPriceService({
+    async history() {
+      return [
+        { market_code: 'ceda-680', market_name: 'Rampur', lat: null, lng: null, date: '2025-10-29', modal: 3260, currency: 'INR', unit: 'quintal', source: 'agmarknet', sample: false },
+        { market_code: 'ceda-680', market_name: 'Rampur', lat: null, lng: null, date: '2025-10-30', modal: 3290, currency: 'INR', unit: 'quintal', source: 'agmarknet', sample: false },
+      ];
+    },
+  });
+  const d = await historical.getPrices({ crop: 'rice', region: 'IN-CEDA-S9-D136', home: 'ceda-680' });
+  assert.equal(d.date, '2025-10-30');
+  assert.equal(d.source, 'agmarknet');
+  assert.equal(d.sample, false);
+});
