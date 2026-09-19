@@ -107,9 +107,10 @@ export function createFarmOpsService(pool, { farmPriceService = null, weatherGet
       ` ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, t.start_at NULLS LAST, t.created_at`, [farmId, day])).rows.map(shapeTask);
     const section = { blocked: [], overdue: [], inProgress: [], due: [], unassigned: [], completed: [] };
     for (const t of rows) {
+      // Work someone is still doing is "in progress", even when it started on an earlier day.
       if (t.status === 'blocked') section.blocked.push(t);
-      else if (t.localDate < day && !['completed','verified'].includes(t.status)) section.overdue.push(t);
       else if (t.status === 'in_progress') section.inProgress.push(t);
+      else if (t.localDate < day && !['completed','verified'].includes(t.status)) section.overdue.push(t);
       else if (['completed','verified'].includes(t.status)) section.completed.push(t);
       else if (!t.assignments.length) section.unassigned.push(t);
       else section.due.push(t);

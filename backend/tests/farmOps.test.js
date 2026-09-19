@@ -209,3 +209,13 @@ test('moving a task keeps its time of day and puts delayed work back on the plan
     assert.ok(!overview.sections.overdue.some((x) => x.id === pump.id), 'no longer overdue');
   } finally { await t.close(); }
 });
+
+test('work still in progress from an earlier day is "in progress", not overdue', async () => {
+  const t = await setup();
+  try {
+    const next = await t.ops.overview(t.owner, FARM_DEMO_ID, '2026-09-20');
+    assert.ok(next.sections.inProgress.some((x) => x.title === 'Irrigate north section'));
+    assert.ok(!next.sections.overdue.some((x) => x.title === 'Irrigate north section'));
+    assert.ok(next.sections.overdue.some((x) => x.title === 'Inspect pump'), 'not started is still overdue');
+  } finally { await t.close(); }
+});

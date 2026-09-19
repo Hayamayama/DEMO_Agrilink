@@ -18,7 +18,9 @@ function openFarm(ctx, f) { farmOps.activeFarmId=f.id; farmOps.activeFarm=f; far
 const taskRow = (t) => {
   const row=el(`item ops-task-row priority-${t.priority || 'normal'}`); row.dataset.id=t.id;
   const mark=el('ops-task-status', (STATUS[t.status] || t.status || '□').split(' ')[0]);
-  const body=el('ops-task-body'); body.append(el('ops-task-title',t.title),el('ops-task-meta',`${t.fieldName || 'No field'} · ${t.assignments?.[0]?.name || 'Unassigned'}`));
+  // A task from an earlier day that is still running says since when.
+  const since=t.status==='in_progress'&&farmOps.activeDate&&t.localDate<farmOps.activeDate?` · from ${niceDate(t.localDate)}`:'';
+  const body=el('ops-task-body'); body.append(el('ops-task-title',t.title),el('ops-task-meta',`${t.fieldName || 'No field'} · ${t.assignments?.[0]?.name || 'Unassigned'}${since}`));
   row.append(mark,body); return row;
 };
 const section = (root, title, items) => {
