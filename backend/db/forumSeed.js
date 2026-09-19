@@ -28,8 +28,11 @@ export async function seedDemo(pool, { auth, pin = process.env.DEMO_USER_PIN, no
   }
   if (!/^\d{6}$/.test(pin)) throw new Error('DEMO_USER_PIN must be exactly 6 digits');
 
-  for (const [code, country, name] of DEMO_REGIONS) {
-    await pool.query('INSERT INTO app.regions (code, country_code, name) VALUES ($1, $2, $3) ON CONFLICT (code) DO NOTHING', [code, country, name]);
+  for (const [code, country, name, lat, lon] of DEMO_REGIONS) {
+    // Existing regions keep their name; only missing coordinates are filled in.
+    await pool.query(`INSERT INTO app.regions (code, country_code, name, latitude, longitude) VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (code) DO UPDATE SET latitude = COALESCE(app.regions.latitude, EXCLUDED.latitude),
+        longitude = COALESCE(app.regions.longitude, EXCLUDED.longitude)`, [code, country, name, lat, lon]);
   }
   const regionIds = new Map((await pool.query('SELECT code, id FROM app.regions')).rows.map((r) => [r.code, r.id]));
 

@@ -10,8 +10,10 @@ export const DEMO_USERS = [
   ['10000005', '9100000005', 'Meena S.', 'Danapur', 'IN-BR', 'moderator'],
 ];
 // Regions the demo needs that a fresh database may lack. Existing codes are left untouched.
+// [code, country, name, latitude, longitude] - centre points match migration 008.
 export const DEMO_REGIONS = [
-  ['IN-BR', 'IN', 'Bihar'], ['IN-UP-01', 'IN', 'Rampur, Uttar Pradesh'], ['VN-AG', 'VN', 'An Giang'], ['BD-RAJ', 'BD', 'Rajshahi'],
+  ['IN-BR', 'IN', 'Bihar', 25.5941, 85.1376], ['IN-UP-01', 'IN', 'Rampur, Uttar Pradesh', 28.8, 79.03],
+  ['VN-AG', 'VN', 'An Giang', 10.3864, 105.4352], ['BD-RAJ', 'BD', 'Rajshahi', 24.3745, 88.6042],
 ];
 export const VOTER_COUNT = 34;
 
